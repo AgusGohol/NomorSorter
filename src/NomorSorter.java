@@ -1654,19 +1654,23 @@ public class NomorSorter extends JFrame {
         return out.toString();
     }
 
-    private static Release fetchLatestRelease() throws IOException, InterruptedException {
-        java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
-            .connectTimeout(java.time.Duration.ofSeconds(10))
-            .followRedirects(java.net.http.HttpClient.Redirect.NORMAL).build();
-        java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder(
-                java.net.URI.create("https://api.github.com/repos/" + UPDATE_REPO + "/releases/latest"))
-            .timeout(java.time.Duration.ofSeconds(15))
-            .header("Accept", "application/vnd.github+json")
-            .header("User-Agent", "NomorSorter/" + APP_VERSION).build();
-        java.net.http.HttpResponse<String> response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
-        if (response.statusCode() == 404) return null;
-        if (response.statusCode() != 200) throw new IOException("GitHub menjawab kode " + response.statusCode());
-        String json = response.body();
+    private static java.net.HttpURLConnection openConnection(String url) throws IOException {
+        java.net.HttpURLConnection connection = (java.net.HttpURLConnection) java.net.URI.create(url).toURL().openConnection();
+        connection.setConnectTimeout(15_000);
+        connection.setReadTimeout(30_000);
+        connection.setInstanceFollowRedirects(true);
+        connection.setRequestProperty("User-Agent", "NomorSorter/" + APP_VERSION);
+        return connection;
+    }
+
+    private static Release fetchLatestRelease() throws IOException {
+        java.net.HttpURLConnection connection = openConnection("https://api.github.com/repos/" + UPDATE_REPO + "/releases/latest");
+        connection.setRequestProperty("Accept", "application/vnd.github+json");
+        int status = connection.getResponseCode();
+        if (status == 404) return null;
+        if (status != 200) throw new IOException("GitHub menjawab kode " + status);
+        String json;
+        try (InputStream in = connection.getInputStream()) { json = new String(in.readAllBytes(), StandardCharsets.UTF_8); }
         String tag = jsonString(json, "tag_name");
         Matcher asset = Pattern.compile("\"browser_download_url\"\\s*:\\s*\"([^\"]+\\.zip)\"").matcher(json);
         if (tag == null || !asset.find()) return null;
@@ -1760,16 +1764,10 @@ public class NomorSorter extends JFrame {
             @Override protected Path doInBackground() throws Exception {
                 Path staging = Files.createTempDirectory("nomorsorter-pembaruan-");
                 Path zip = staging.resolve("NomorSorter_" + release.version() + ".zip");
-                java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
-                    .connectTimeout(java.time.Duration.ofSeconds(15))
-                    .followRedirects(java.net.http.HttpClient.Redirect.NORMAL).build();
-                java.net.http.HttpResponse<InputStream> response = client.send(
-                    java.net.http.HttpRequest.newBuilder(java.net.URI.create(release.zipUrl()))
-                        .header("User-Agent", "NomorSorter/" + APP_VERSION).build(),
-                    java.net.http.HttpResponse.BodyHandlers.ofInputStream());
-                if (response.statusCode() != 200) throw new IOException("Unduhan gagal, kode " + response.statusCode());
-                long total = response.headers().firstValueAsLong("Content-Length").orElse(-1);
-                try (InputStream in = response.body(); OutputStream out = Files.newOutputStream(zip)) {
+                java.net.HttpURLConnection connection = openConnection(release.zipUrl());
+                if (connection.getResponseCode() != 200) throw new IOException("Unduhan gagal, kode " + connection.getResponseCode());
+                long total = connection.getContentLengthLong();
+                try (InputStream in = connection.getInputStream(); OutputStream out = Files.newOutputStream(zip)) {
                     byte[] buffer = new byte[16_384];
                     long done = 0;
                     for (int read; (read = in.read(buffer)) != -1; ) {
