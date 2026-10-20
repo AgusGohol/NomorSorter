@@ -4,6 +4,7 @@ import javax.swing.plaf.basic.BasicTabbedPaneUI;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableRowSorter;
+import javax.swing.text.JTextComponent;
 import java.awt.*;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
@@ -17,15 +18,28 @@ import java.util.regex.*;
 
 public class NomorSorter extends JFrame {
     // Naikkan bersama berkas VERSION setiap rilis; tag GitHub memakai format v<versi>.
-    static final String APP_VERSION = "2.7.0";
+    static final String APP_VERSION = "2.8.0";
     private static final String UPDATE_REPO = "AgusGohol/NomorSorter";
-    private static final Color BACKGROUND = new Color(10, 18, 32);
-    private static final Color PANEL = new Color(18, 32, 52);
-    private static final Color INPUT = new Color(12, 25, 44);
-    private static final Color TEXT = new Color(238, 246, 255);
-    private static final Color MUTED = new Color(157, 179, 205);
-    private static final Color ACCENT = new Color(52, 211, 163);
-    private static final Color BORDER = new Color(43, 65, 89);
+    // Palet: satu warna aksen (hijau) di atas permukaan biru gelap netral.
+    private static final Color BACKGROUND = new Color(11, 18, 32);
+    private static final Color SIDEBAR = new Color(14, 22, 38);
+    private static final Color PANEL = new Color(16, 25, 42);
+    private static final Color INPUT = new Color(11, 18, 32);
+    private static final Color HOVER = new Color(26, 39, 61);
+    private static final Color ROW_LINE = new Color(24, 35, 54);
+    private static final Color ROW_SELECTED = new Color(22, 52, 76);
+    private static final Color TEXT = new Color(230, 237, 246);
+    private static final Color MUTED = new Color(150, 164, 186);
+    private static final Color SUBTLE = new Color(100, 117, 142);
+    private static final Color ACCENT = new Color(47, 191, 143);
+    private static final Color ON_ACCENT = new Color(6, 38, 27);
+    private static final Color BORDER = new Color(31, 44, 65);
+    private static final Color BORDER_STRONG = new Color(42, 58, 84);
+    private static final Color DANGER = new Color(240, 104, 110);
+    private static final String FONT_NAME = availableFont("Segoe UI", "SansSerif");
+    private static final String FONT_STRONG = availableFont("Segoe UI Semibold", FONT_NAME);
+    private static final String FONT_MONO = availableFont("Consolas", "Monospaced");
+    private static final String ICON_FONT = availableFont("Segoe Fluent Icons", availableFont("Segoe MDL2 Assets", null));
     private final Path directory = Paths.get("data");
     private Path yesFile, noFile;
     private int activeDevice = 1;
@@ -41,9 +55,12 @@ public class NomorSorter extends JFrame {
     private final LinkedHashSet<String> yes = new LinkedHashSet<>(), no = new LinkedHashSet<>();
     private final LinkedHashSet<String> hiddenYes = new LinkedHashSet<>(), hiddenNo = new LinkedHashSet<>();
     private final Map<String, String> yesCom = new LinkedHashMap<>(), noCom = new LinkedHashMap<>();
-    private final JTextArea input = new JTextArea(5, 42);
-    private final JTextField search = new JTextField(20);
+    private final JTextArea input = new HintTextArea("Tempel baris data, contoh:  COM7  XL Axiata  083172103663  -51  on  69  1 | wa", 5, 42);
+    private final JTextField search = new HintTextField("Cari nomor", 14);
     private final JLabel count = new JLabel();
+    private final JLabel pageSubtitle = new JLabel();
+    private final JToggleButton[] segments = new JToggleButton[2];
+    private JToggleButton navDevices;
     private final JTabbedPane tabs = new JTabbedPane();
     private final DefaultTableModel[] models = new DefaultTableModel[2];
     private final JTable[] tables = new JTable[2];
@@ -54,7 +71,7 @@ public class NomorSorter extends JFrame {
     private final JComboBox<String>[] databaseDates = new JComboBox[]{new JComboBox<>(), new JComboBox<>()};
     private final DefaultTableModel[] databaseModels = new DefaultTableModel[2];
     private final JTable[] databaseTables = new JTable[2];
-    private final JTextField[] databaseSearch = {new JTextField(19), new JTextField(19)};
+    private final JTextField[] databaseSearch = {new HintTextField("Cari nomor (8, 08, 62, +62)", 16), new HintTextField("Cari nomor (8, 08, 62, +62)", 16)};
     private final JLabel[] databaseInfo = {new JLabel(), new JLabel()};
     private boolean updatingDatabaseDates;
     private static final Pattern PHONE = Pattern.compile("(?<![0-9])(?:\\+?62|0)?8[0-9]{8,12}(?![0-9])");
@@ -84,127 +101,68 @@ public class NomorSorter extends JFrame {
             if (Files.exists(legacyNo)) Files.move(legacyNo, directory.resolve("belum-wa.db.migrated"), StandardCopyOption.REPLACE_EXISTING);
         }
         setDefaultCloseOperation(EXIT_ON_CLOSE);
-        setMinimumSize(new Dimension(940, 640));
-        setSize(1180, 760);
+        setMinimumSize(new Dimension(1000, 680));
+        setSize(1240, 800);
         setLocationRelativeTo(null);
         getContentPane().setBackground(BACKGROUND);
 
-        JPanel root = new JPanel(new BorderLayout(16, 16));
-        root.setBorder(BorderFactory.createEmptyBorder(18, 18, 18, 18));
+        JPanel root = new JPanel(new BorderLayout());
         root.setBackground(BACKGROUND);
         setContentPane(root);
-        JLabel title = new JLabel("Nomor Sorter");
-        title.setFont(new Font("SansSerif", Font.BOLD, 29));
-        JPanel top = new JPanel(new BorderLayout(0, 10));
-        top.setOpaque(false); top.add(title, BorderLayout.NORTH);
-        input.setLineWrap(true); input.setWrapStyleWord(true);
-        input.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
-        JPanel entry = new RoundedPanel(new BorderLayout(0, 12));
-        entry.add(new JLabel("Tempel baris data berisi nomor dan penanda WA (atau impor TXT/CSV):"), BorderLayout.NORTH);
-        entry.add(new JScrollPane(input), BorderLayout.CENTER);
-        JPanel entryButtons = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
-        entryButtons.setOpaque(false);
-        JButton addYes = button("Masukkan ke Sudah WA", new Color(27, 137, 93));
-        JButton addNo = button("Masukkan ke Belum WA", new Color(56, 105, 185));
-        JButton autoSort = button("Sortir otomatis dari tulisan WA", new Color(16, 159, 128));
-        JButton importFile = button("Impor TXT/CSV", new Color(85, 93, 110));
-        autoSort.addActionListener(e -> sortAutomatically());
-        addYes.addActionListener(e -> add(input.getText(), true));
-        addNo.addActionListener(e -> add(input.getText(), false));
-        importFile.addActionListener(e -> importText());
-        entryButtons.add(autoSort); entryButtons.add(addYes); entryButtons.add(addNo); entryButtons.add(importFile);
-        entry.add(entryButtons, BorderLayout.SOUTH);
-        top.add(entry, BorderLayout.CENTER);
-        JPanel devicePage = new JPanel(new BorderLayout(14, 14));
-        devicePage.setOpaque(false);
-        devicePage.add(top, BorderLayout.NORTH);
 
-        JPanel sidebar = new RoundedPanel();
+        // ----- Sisi kiri: nama aplikasi, navigasi, pembaruan -----
+        JPanel sidebar = new JPanel();
         sidebar.setLayout(new BoxLayout(sidebar, BoxLayout.Y_AXIS));
-        sidebar.setPreferredSize(new Dimension(178, 0));
-        sidebar.setBorder(BorderFactory.createEmptyBorder(23, 14, 20, 14));
-        JLabel databaseTitle = new JLabel("Database bersama");
-        databaseTitle.setFont(new Font("SansSerif", Font.BOLD, 14));
-        databaseTitle.setAlignmentX(Component.LEFT_ALIGNMENT);
-        sidebar.add(databaseTitle);
+        sidebar.setBackground(SIDEBAR);
+        sidebar.setPreferredSize(new Dimension(212, 0));
+        sidebar.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createMatteBorder(0, 0, 0, 1, BORDER),
+            BorderFactory.createEmptyBorder(20, 12, 14, 12)));
+        JPanel brand = row(10, new LogoBadge(), label("Nomor Sorter", true, 15, TEXT));
+        brand.setBorder(BorderFactory.createEmptyBorder(0, 6, 0, 0));
+        addToSidebar(sidebar, brand);
+        sidebar.add(Box.createVerticalStrut(26));
+        addToSidebar(sidebar, sidebarSection("Kerja"));
+        JToggleButton showDevices = styled(new JToggleButton("Input device"), Kind.NAV, IC_DEVICE);
+        navDevices = showDevices;
+        addToSidebar(sidebar, showDevices);
         sidebar.add(Box.createVerticalStrut(16));
-        JToggleButton showDevices = toggle("Device");
-        JToggleButton showNo = toggle("Belum WA");
-        JToggleButton showYes = toggle("Sudah WA");
+        addToSidebar(sidebar, sidebarSection("Database"));
+        JToggleButton showNo = styled(new JToggleButton("Belum WA"), Kind.NAV, IC_PENDING);
+        JToggleButton showYes = styled(new JToggleButton("Sudah WA"), Kind.NAV, IC_DONE);
+        JButton exportNumbers = styled(new JButton("Ekspor nomor"), Kind.NAV, IC_EXPORT);
+        exportNumbers.setToolTipText("Ekspor nomor dari beberapa tanggal dan device ke Notepad (.txt) atau Excel (.xlsx)");
+        exportNumbers.addActionListener(e -> showExportDialog(Set.of(activeDate), null, null));
+        addToSidebar(sidebar, showNo);
+        sidebar.add(Box.createVerticalStrut(2));
+        addToSidebar(sidebar, showYes);
+        sidebar.add(Box.createVerticalStrut(2));
+        addToSidebar(sidebar, exportNumbers);
         ButtonGroup menu = new ButtonGroup();
-        showDevices.setSelected(true);
-        showDevices.setForeground(BACKGROUND);
         for (JToggleButton nav : new JToggleButton[]{showDevices, showNo, showYes}) {
             menu.add(nav);
-            nav.addItemListener(e -> nav.setForeground(nav.isSelected() ? BACKGROUND : TEXT));
-            nav.setAlignmentX(Component.LEFT_ALIGNMENT);
-            nav.setMaximumSize(new Dimension(149, 42));
-            sidebar.add(nav);
-            sidebar.add(Box.createVerticalStrut(8));
+            nav.putClientProperty("accentIcon", Boolean.TRUE);
         }
+        showDevices.setSelected(true);
         showNo.addActionListener(e -> showDatabase(false));
         showYes.addActionListener(e -> showDatabase(true));
         showDevices.addActionListener(e -> pageLayout.show(pages, "devices"));
-        sidebar.add(Box.createVerticalStrut(12));
-        JButton exportNumbers = button("Ekspor nomor", new Color(85, 93, 110));
-        exportNumbers.setToolTipText("Ekspor nomor dari beberapa tanggal dan device ke Notepad (.txt) atau Excel (.xlsx)");
-        exportNumbers.setAlignmentX(Component.LEFT_ALIGNMENT);
-        exportNumbers.setMaximumSize(new Dimension(149, 42));
-        exportNumbers.addActionListener(e -> showExportDialog(Set.of(activeDate), null, null));
-        sidebar.add(exportNumbers);
         sidebar.add(Box.createVerticalGlue());
-        JButton checkUpdate = button("Periksa pembaruan", INPUT);
-        checkUpdate.setAlignmentX(Component.LEFT_ALIGNMENT);
-        checkUpdate.setMaximumSize(new Dimension(149, 42));
+        JButton checkUpdate = styled(new JButton("Periksa pembaruan"), Kind.NAV, IC_SYNC);
         checkUpdate.addActionListener(e -> checkForUpdates(true));
-        sidebar.add(checkUpdate);
-        sidebar.add(Box.createVerticalStrut(8));
-        JLabel versionLabel = new JLabel("Versi " + APP_VERSION);
-        versionLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-        sidebar.add(versionLabel);
+        addToSidebar(sidebar, checkUpdate);
+        JLabel versionLabel = label("Versi " + APP_VERSION, false, 11, SUBTLE);
+        versionLabel.setBorder(BorderFactory.createEmptyBorder(6, 12, 0, 0));
+        addToSidebar(sidebar, versionLabel);
         root.add(sidebar, BorderLayout.WEST);
 
-        for (int i = 0; i < 2; i++) {
-            models[i] = new DefaultTableModel(new Object[]{"No.", "COM", "Nomor telepon"}, 0) {
-                @Override public boolean isCellEditable(int r, int c) { return false; }
-            };
-            tables[i] = new JTable(models[i]);
-            tables[i].setRowHeight(30);
-            tables[i].setFont(new Font("SansSerif", Font.PLAIN, 14));
-            tables[i].getTableHeader().setFont(new Font("SansSerif", Font.BOLD, 13));
-            tables[i].getColumnModel().getColumn(0).setMaxWidth(65);
-            tables[i].getColumnModel().getColumn(1).setMaxWidth(105);
-            tables[i].setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
-            sorters[i] = new TableRowSorter<>(models[i]);
-            tables[i].setRowSorter(sorters[i]);
-            styleTable(tables[i]);
-            final int tableIndex = i;
-            tables[i].addMouseListener(new java.awt.event.MouseAdapter() {
-                @Override public void mouseClicked(java.awt.event.MouseEvent e) {
-                    int row = tables[tableIndex].rowAtPoint(e.getPoint());
-                    if (row >= 0) copyText((String) models[tableIndex].getValueAt(tables[tableIndex].convertRowIndexToModel(row), 2));
-                }
-            });
-            tabs.addTab(i == 0 ? "Sudah WA" : "Belum WA", new JScrollPane(tables[i]));
-        }
-        tabs.addChangeListener(e -> { filter(); updateCount(); });
-        JPanel list = new RoundedPanel(new BorderLayout(0, 12));
-        JPanel controls = new JPanel(new BorderLayout(0, 8));
-        controls.setOpaque(false);
-        devicesPanel.setOpaque(false);
-        rebuildDeviceButtons();
-        controls.add(devicesPanel, BorderLayout.NORTH);
-        JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
-        toolbar.setOpaque(false);
-        toolbar.add(new JLabel("Tanggal:"));
-        datePicker.setPreferredSize(new Dimension(130, 29));
-        toolbar.add(datePicker);
-        JButton manualDate = button("Pilih dari kalender", new Color(57, 113, 176));
+        // ----- Halaman input device -----
+        datePicker.setPreferredSize(new Dimension(140, 34));
+        JButton manualDate = iconButton(IC_CALENDAR, "Pilih tanggal dari kalender");
+        if (ICON_FONT == null) manualDate.setText("Kalender");
         manualDate.addActionListener(e -> showCalendar(manualDate, activeDate, date -> {
             try { switchInputDate(date); }
             catch (IOException ex) { error("Gagal membuka tanggal input: " + ex.getMessage()); }
         }));
-        toolbar.add(manualDate);
         refreshDates();
         datePicker.addActionListener(e -> {
             String selected = (String) datePicker.getSelectedItem();
@@ -213,44 +171,130 @@ public class NomorSorter extends JFrame {
                 catch (IOException ex) { error("Gagal membuka tanggal: " + ex.getMessage()); datePicker.setSelectedItem(activeDate); }
             }
         });
-        toolbar.add(new JLabel("Cari:")); toolbar.add(search);
+        JPanel header = pageHeader("Input device", pageSubtitle, row(6, datePicker, manualDate));
+
+        devicesPanel.setOpaque(false);
+        devicesPanel.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, BORDER));
+        rebuildDeviceButtons();
+
+        input.setLineWrap(true); input.setWrapStyleWord(true);
+        JScrollPane inputScroll = new JScrollPane(input);
+        inputScroll.setBorder(BorderFactory.createEmptyBorder());
+        inputScroll.getViewport().setBackground(PANEL);
+        inputScroll.setPreferredSize(new Dimension(400, 104));
+        JButton autoSort = primary("Sortir otomatis");
+        autoSort.setToolTipText("Baris yang bertuliskan \"wa\" masuk Sudah WA, selebihnya masuk Belum WA");
+        JButton addYes = secondary("Ke Sudah WA", (char) 0);
+        JButton addNo = secondary("Ke Belum WA", (char) 0);
+        JButton importFile = ghost("Impor file", IC_IMPORT);
+        importFile.setToolTipText("Isi kotak input dari berkas TXT atau CSV");
+        autoSort.addActionListener(e -> sortAutomatically());
+        addYes.addActionListener(e -> add(input.getText(), true));
+        addNo.addActionListener(e -> add(input.getText(), false));
+        importFile.addActionListener(e -> importText());
+        JPanel inputBar = new JPanel(new BorderLayout());
+        inputBar.setOpaque(false);
+        inputBar.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, BORDER),
+            BorderFactory.createEmptyBorder(10, 12, 10, 12)));
+        inputBar.add(row(8, autoSort, addYes, addNo), BorderLayout.WEST);
+        inputBar.add(importFile, BorderLayout.EAST);
+        JPanel inputCard = card(new BorderLayout());
+        inputCard.add(inputScroll, BorderLayout.CENTER);
+        inputCard.add(inputBar, BorderLayout.SOUTH);
+
+        JPanel north = new JPanel();
+        north.setLayout(new BoxLayout(north, BoxLayout.Y_AXIS));
+        north.setOpaque(false);
+        for (JComponent part : new JComponent[]{header, devicesPanel, inputCard}) {
+            part.setAlignmentX(Component.LEFT_ALIGNMENT);
+            if (north.getComponentCount() > 0) north.add(Box.createVerticalStrut(part == devicesPanel ? 16 : 14));
+            north.add(part);
+        }
+
+        // Tabel Sudah WA / Belum WA. Tab bawaan disembunyikan; pilihan lewat tombol segmen.
+        for (int i = 0; i < 2; i++) {
+            models[i] = new DefaultTableModel(new Object[]{"No.", "COM", "Nomor telepon"}, 0) {
+                @Override public boolean isCellEditable(int r, int c) { return false; }
+            };
+            tables[i] = new JTable(models[i]);
+            styleTable(tables[i]);
+            tables[i].getColumnModel().getColumn(0).setMaxWidth(70);
+            tables[i].getColumnModel().getColumn(1).setMaxWidth(120);
+            tables[i].setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+            sorters[i] = new TableRowSorter<>(models[i]);
+            tables[i].setRowSorter(sorters[i]);
+            final int tableIndex = i;
+            tables[i].addMouseListener(new java.awt.event.MouseAdapter() {
+                @Override public void mouseClicked(java.awt.event.MouseEvent e) {
+                    int row = tables[tableIndex].rowAtPoint(e.getPoint());
+                    if (row >= 0) copyText((String) models[tableIndex].getValueAt(tables[tableIndex].convertRowIndexToModel(row), 2));
+                }
+            });
+            tabs.addTab(i == 0 ? "Sudah WA" : "Belum WA", tableScroll(tables[i]));
+        }
+        tabs.setUI(new BasicTabbedPaneUI() {
+            @Override protected int calculateTabAreaHeight(int placement, int runs, int maxHeight) { return 0; }
+            @Override protected Insets getContentBorderInsets(int placement) { return new Insets(0, 0, 0, 0); }
+            @Override protected void paintTabArea(Graphics g, int placement, int selected) { }
+            @Override protected void paintContentBorder(Graphics g, int placement, int selected) { }
+        });
+        tabs.setOpaque(false);
+        JPanel segmentBar = card(new FlowLayout(FlowLayout.LEFT, 2, 0));
+        segmentBar.setBorder(BorderFactory.createEmptyBorder(3, 2, 3, 2));
+        ButtonGroup segmentGroup = new ButtonGroup();
+        for (int i = 0; i < 2; i++) {
+            final int index = i;
+            segments[i] = styled(new JToggleButton(i == 0 ? "Sudah WA" : "Belum WA"), Kind.SEGMENT, (char) 0);
+            segments[i].addActionListener(e -> tabs.setSelectedIndex(index));
+            segmentGroup.add(segments[i]);
+            segmentBar.add(segments[i]);
+        }
+        segments[0].setSelected(true);
+        tabs.addChangeListener(e -> { segments[tabs.getSelectedIndex()].setSelected(true); filter(); updateCount(); });
+        search.setPreferredSize(new Dimension(230, 34));
         search.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
             public void insertUpdate(javax.swing.event.DocumentEvent e) { filter(); }
             public void removeUpdate(javax.swing.event.DocumentEvent e) { filter(); }
             public void changedUpdate(javax.swing.event.DocumentEvent e) { filter(); }
         });
-        controls.add(toolbar, BorderLayout.SOUTH);
-        list.add(controls, BorderLayout.NORTH);
-        list.add(tabs, BorderLayout.CENTER);
-        devicePage.add(list, BorderLayout.CENTER);
+        JPanel resultsBar = new JPanel(new BorderLayout());
+        resultsBar.setOpaque(false);
+        resultsBar.add(segmentBar, BorderLayout.WEST);
+        resultsBar.add(search, BorderLayout.EAST);
+        JPanel tableCard = card(new BorderLayout());
+        tableCard.add(tabs, BorderLayout.CENTER);
+        JPanel results = new JPanel(new BorderLayout(0, 10));
+        results.setOpaque(false);
+        results.add(resultsBar, BorderLayout.NORTH);
+        results.add(tableCard, BorderLayout.CENTER);
 
-        JPanel bottom = new JPanel(new BorderLayout());
-        bottom.setOpaque(false);
-        JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
-        actions.setOpaque(false);
-        JButton delete = button("Hapus nomor terpilih", new Color(173, 66, 69));
-        delete.setToolTipText("Sembunyikan dari riwayat device; database utama tetap tersimpan");
-        JButton clearHistory = button("Kosongkan riwayat tanggal ini", new Color(137, 68, 83));
-        JButton restoreHistory = button("Pulihkan riwayat tanggal ini", new Color(67, 101, 133));
-        JButton export = button("Ekspor TXT/Excel", new Color(85, 93, 110));
-        JButton copyAll = button("Salin semua nomor tanggal ini", new Color(32, 124, 139));
-        JButton copySelected = button("Salin nomor terpilih", new Color(57, 113, 176));
-        delete.addActionListener(e -> hideSelectedFromHistory());
-        clearHistory.addActionListener(e -> clearHistory());
-        restoreHistory.addActionListener(e -> restoreHistory());
-        export.addActionListener(e -> showExportDialog(Set.of(activeDate), Set.of(activeDevice), Set.of(tabs.getSelectedIndex() == 0)));
-        copyAll.addActionListener(e -> copyAll());
+        JButton copySelected = secondary("Salin terpilih", IC_COPY);
+        JButton copyAll = secondary("Salin semua", (char) 0);
+        copySelected.setToolTipText("Salin nomor pada baris yang dipilih");
+        copyAll.setToolTipText("Salin semua nomor yang terlihat pada device dan tanggal ini");
         copySelected.addActionListener(e -> copySelectedFromDevice());
-        actions.add(copyAll); actions.add(copySelected); actions.add(delete); actions.add(export);
-        bottom.add(actions, BorderLayout.NORTH);
-        JPanel historyActions = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
-        historyActions.setOpaque(false);
-        historyActions.add(clearHistory);
-        historyActions.add(restoreHistory);
-        bottom.add(historyActions, BorderLayout.CENTER);
-        bottom.add(count, BorderLayout.SOUTH);
-        devicePage.add(bottom, BorderLayout.SOUTH);
+        copyAll.addActionListener(e -> copyAll());
+        JPopupMenu deviceMenu = popupMenu(
+            menuItem("Sembunyikan nomor terpilih", IC_HIDE, false, this::hideSelectedFromHistory),
+            menuItem("Kosongkan riwayat tanggal ini", IC_CLEAR, false, this::clearHistory),
+            menuItem("Pulihkan riwayat tanggal ini", IC_RESTORE, false, this::restoreHistory),
+            null,
+            menuItem("Ekspor TXT/Excel…", IC_EXPORT, false,
+                () -> showExportDialog(Set.of(activeDate), Set.of(activeDevice), Set.of(tabs.getSelectedIndex() == 0))));
+        count.setFont(font(false, 12));
+        count.setForeground(SUBTLE);
+        JPanel actionBar = new JPanel(new BorderLayout(12, 0));
+        actionBar.setOpaque(false);
+        actionBar.add(row(8, copySelected, copyAll, moreButton(deviceMenu)), BorderLayout.WEST);
+        actionBar.add(count, BorderLayout.EAST);
+
+        JPanel devicePage = new JPanel(new BorderLayout(0, 14));
+        devicePage.setOpaque(false);
+        devicePage.add(north, BorderLayout.NORTH);
+        devicePage.add(results, BorderLayout.CENTER);
+        devicePage.add(actionBar, BorderLayout.SOUTH);
         pages.setOpaque(false);
+        pages.setBorder(BorderFactory.createEmptyBorder(22, 28, 18, 28));
         pages.add(devicePage, "devices");
         pages.add(createDatabasePage(false), "belum");
         pages.add(createDatabasePage(true), "sudah");
@@ -265,44 +309,29 @@ public class NomorSorter extends JFrame {
         updateTimer.start();
     }
 
-    private JButton button(String label, Color color) {
-        JButton b = new JButton(label);
-        b.setBackground(color); b.setForeground(TEXT);
-        b.setFont(new Font("SansSerif", Font.BOLD, 13));
-        b.setUI(new RoundedButtonUI());
-        b.setOpaque(false); b.setContentAreaFilled(false); b.setFocusPainted(false);
-        b.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        b.setBorder(BorderFactory.createEmptyBorder(11, 15, 11, 15));
-        return b;
+    private static void addToSidebar(JPanel sidebar, JComponent item) {
+        item.setAlignmentX(Component.LEFT_ALIGNMENT);
+        item.setMaximumSize(new Dimension(Integer.MAX_VALUE, item.getPreferredSize().height));
+        sidebar.add(item);
     }
 
-    private JToggleButton toggle(String label) {
-        JToggleButton b = new JToggleButton(label);
-        b.setBackground(INPUT);
-        b.setForeground(TEXT);
-        b.setFont(new Font("SansSerif", Font.BOLD, 13));
-        b.setUI(new RoundedButtonUI());
-        b.setOpaque(false); b.setContentAreaFilled(false); b.setFocusPainted(false);
-        b.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        b.setBorder(BorderFactory.createEmptyBorder(10, 14, 10, 14));
-        return b;
+    private static JLabel sidebarSection(String text) {
+        JLabel section = label(text, false, 11, SUBTLE);
+        section.setBorder(BorderFactory.createEmptyBorder(0, 10, 6, 0));
+        return section;
     }
 
-    private static class RoundedPanel extends JPanel {
-        RoundedPanel() { super(); setOpaque(false); setBackground(PANEL); }
-        RoundedPanel(LayoutManager layout) {
-            super(layout); setOpaque(false); setBackground(PANEL);
-            setBorder(BorderFactory.createEmptyBorder(16, 18, 16, 18));
-        }
+    private static class LogoBadge extends JComponent {
+        LogoBadge() { setPreferredSize(new Dimension(28, 28)); }
         @Override protected void paintComponent(Graphics g) {
-            Graphics2D graphics = (Graphics2D) g.create();
-            graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            graphics.setColor(getBackground());
-            graphics.fillRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 22, 22);
-            graphics.setColor(BORDER);
-            graphics.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 22, 22);
+            Graphics2D graphics = smooth(g);
+            graphics.setColor(ACCENT);
+            graphics.fillRoundRect(0, 0, 28, 28, 9, 9);
+            graphics.setColor(ON_ACCENT);
+            graphics.setFont(font(true, 12));
+            FontMetrics metrics = graphics.getFontMetrics();
+            graphics.drawString("NS", (28 - metrics.stringWidth("NS")) / 2, (28 - metrics.getHeight()) / 2 + metrics.getAscent());
             graphics.dispose();
-            super.paintComponent(g);
         }
     }
 
@@ -343,105 +372,452 @@ public class NomorSorter extends JFrame {
         }
     }
 
-    private static class RoundedButtonUI extends BasicButtonUI {
-        @Override public void paint(Graphics g, JComponent component) {
-            AbstractButton button = (AbstractButton) component;
-            Color fill = button.isSelected() ? ACCENT : button.getBackground();
-            if (button.getModel().isPressed()) fill = fill.darker();
-            else if (button.getModel().isRollover()) fill = new Color(
-                Math.min(255, fill.getRed() + 13), Math.min(255, fill.getGreen() + 13), Math.min(255, fill.getBlue() + 13));
-            Graphics2D graphics = (Graphics2D) g.create();
-            graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            graphics.setColor(fill);
-            graphics.fillRoundRect(0, 0, component.getWidth() - 1, component.getHeight() - 1, 15, 15);
+    // ===== Komponen tampilan =====
+
+    private static String availableFont(String wanted, String fallback) {
+        for (String family : GraphicsEnvironment.getLocalGraphicsEnvironment().getAvailableFontFamilyNames())
+            if (family.equalsIgnoreCase(wanted)) return family;
+        return fallback;
+    }
+
+    private static Font font(boolean strong, int size) { return new Font(strong ? FONT_STRONG : FONT_NAME, Font.PLAIN, size); }
+
+    private static Graphics2D smooth(Graphics g) {
+        Graphics2D graphics = (Graphics2D) g.create();
+        graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        graphics.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_LCD_HRGB);
+        return graphics;
+    }
+
+    // Kode ikon Segoe MDL2 Assets / Segoe Fluent Icons (bawaan Windows 10/11).
+    private static final char IC_DEVICE = '', IC_PENDING = '', IC_DONE = '', IC_EXPORT = '',
+        IC_SYNC = '', IC_CALENDAR = '', IC_SEARCH = '', IC_COPY = '', IC_MORE = '',
+        IC_ADD = '', IC_IMPORT = '', IC_CHEVRON_DOWN = '', IC_PREV = '', IC_NEXT = '',
+        IC_HIDE = '', IC_CLEAR = '', IC_RESTORE = '', IC_DELETE = '', IC_INPUT = '';
+
+    /** Ikon huruf; warnanya mengikuti teks komponen, atau aksen saat tombol navigasi terpilih. */
+    private static class GlyphIcon implements Icon {
+        private final char glyph; private final int size; private final Color color;
+        GlyphIcon(char glyph, int size) { this(glyph, size, null); }
+        GlyphIcon(char glyph, int size, Color color) { this.glyph = glyph; this.size = size; this.color = color; }
+        @Override public int getIconWidth() { return ICON_FONT == null ? 0 : size + 2; }
+        @Override public int getIconHeight() { return ICON_FONT == null ? 0 : size + 2; }
+        @Override public void paintIcon(Component c, Graphics g, int x, int y) {
+            if (ICON_FONT == null) return;
+            Graphics2D graphics = smooth(g);
+            Color paint = color != null ? color : c.getForeground();
+            if (c instanceof AbstractButton b && b.isSelected() && b.getClientProperty("accentIcon") != null) paint = ACCENT;
+            graphics.setColor(paint);
+            graphics.setFont(new Font(ICON_FONT, Font.PLAIN, size));
+            FontMetrics metrics = graphics.getFontMetrics();
+            graphics.drawString(String.valueOf(glyph), x + (getIconWidth() - metrics.charWidth(glyph)) / 2,
+                y + (getIconHeight() - metrics.getHeight()) / 2 + metrics.getAscent());
             graphics.dispose();
-            super.paint(g, component);
         }
     }
 
+    private enum Kind { PRIMARY, SECONDARY, GHOST, NAV, TAB, SEGMENT }
+
+    /** Satu UI untuk semua tombol: warna dan bentuk ditentukan oleh jenisnya. */
+    private static class FlatButtonUI extends BasicButtonUI {
+        private final Kind kind;
+        FlatButtonUI(Kind kind) { this.kind = kind; }
+        @Override public void paint(Graphics g, JComponent component) {
+            AbstractButton button = (AbstractButton) component;
+            ButtonModel model = button.getModel();
+            boolean hover = model.isRollover() && button.isEnabled(), pressed = model.isPressed();
+            Graphics2D graphics = smooth(g);
+            int w = component.getWidth(), h = component.getHeight();
+            Color fill = null, stroke = null;
+            switch (kind) {
+                case PRIMARY -> fill = pressed ? ACCENT.darker() : hover ? new Color(66, 207, 160) : ACCENT;
+                case SECONDARY -> { stroke = hover ? new Color(58, 77, 108) : BORDER_STRONG; if (hover || pressed) fill = HOVER; }
+                case GHOST -> { if (hover || pressed || button.isSelected()) fill = HOVER; }
+                case NAV -> { if (button.isSelected()) fill = HOVER; else if (hover) fill = new Color(20, 31, 50); }
+                case SEGMENT -> { if (button.isSelected()) fill = HOVER; }
+                case TAB -> { }
+            }
+            if (fill != null) { graphics.setColor(fill); graphics.fillRoundRect(0, 0, w - 1, h - 1, 8, 8); }
+            if (stroke != null) { graphics.setColor(stroke); graphics.drawRoundRect(0, 0, w - 1, h - 1, 8, 8); }
+            if (kind == Kind.TAB && button.isSelected()) { graphics.setColor(ACCENT); graphics.fillRect(6, h - 2, w - 12, 2); }
+            graphics.dispose();
+            Color base = button.getClientProperty("baseColor") instanceof Color c ? c : TEXT;
+            if (kind == Kind.PRIMARY) button.setForeground(ON_ACCENT);
+            else if (kind == Kind.TAB || kind == Kind.SEGMENT || kind == Kind.NAV)
+                button.setForeground(button.isSelected() || hover ? TEXT : MUTED);
+            else button.setForeground(base);
+            super.paint(g, component);
+        }
+        @Override protected void paintText(Graphics g, AbstractButton b, Rectangle textRect, String text) {
+            Graphics2D graphics = smooth(g);
+            graphics.setFont(b.getFont());
+            graphics.setColor(b.isEnabled() ? b.getForeground() : SUBTLE);
+            graphics.drawString(text, textRect.x, textRect.y + graphics.getFontMetrics().getAscent());
+            graphics.dispose();
+        }
+    }
+
+    private static <B extends AbstractButton> B styled(B b, Kind kind, char glyph) {
+        b.setUI(new FlatButtonUI(kind));
+        b.setFont(font(kind == Kind.PRIMARY || kind == Kind.SECONDARY || kind == Kind.TAB, 13));
+        b.setForeground(TEXT);
+        b.setOpaque(false); b.setContentAreaFilled(false); b.setFocusPainted(false); b.setRolloverEnabled(true);
+        b.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        if (glyph != 0) { b.setIcon(new GlyphIcon(glyph, 14)); b.setIconTextGap(8); }
+        switch (kind) {
+            case NAV -> { b.setHorizontalAlignment(SwingConstants.LEFT); b.setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10)); }
+            case TAB -> b.setBorder(BorderFactory.createEmptyBorder(8, 12, 10, 12));
+            case SEGMENT -> b.setBorder(BorderFactory.createEmptyBorder(6, 14, 6, 14));
+            default -> b.setBorder(BorderFactory.createEmptyBorder(7, b.getText().isEmpty() ? 9 : 13, 7, b.getText().isEmpty() ? 9 : 13));
+        }
+        return b;
+    }
+
+    private static JButton primary(String label) { return styled(new JButton(label), Kind.PRIMARY, (char) 0); }
+    private static JButton secondary(String label, char glyph) { return styled(new JButton(label), Kind.SECONDARY, glyph); }
+    private static JButton ghost(String label, char glyph) { return styled(new JButton(label), Kind.GHOST, glyph); }
+    private static JButton iconButton(char glyph, String tooltip) {
+        JButton b = styled(new JButton(""), Kind.GHOST, glyph);
+        b.setToolTipText(tooltip);
+        return b;
+    }
+
+    /** Garis tepi membulat yang tipis, untuk kartu dan kolom isian. */
+    private static class RoundBorder implements javax.swing.border.Border {
+        private final Color color; private final Insets insets; private final int radius;
+        RoundBorder(Color color, int radius, int top, int left, int bottom, int right) {
+            this.color = color; this.radius = radius; insets = new Insets(top, left, bottom, right);
+        }
+        @Override public void paintBorder(Component c, Graphics g, int x, int y, int w, int h) {
+            Graphics2D graphics = smooth(g);
+            graphics.setColor(c.hasFocus() && c instanceof JTextComponent ? new Color(47, 191, 143, 150) : color);
+            graphics.drawRoundRect(x, y, w - 1, h - 1, radius, radius);
+            graphics.dispose();
+        }
+        @Override public Insets getBorderInsets(Component c) { return insets; }
+        @Override public boolean isBorderOpaque() { return false; }
+    }
+
+    private static javax.swing.border.Border fieldBorder(int leftPadding) { return new RoundBorder(BORDER_STRONG, 8, 6, leftPadding, 6, 10); }
+
+    private static class HintTextField extends JTextField {
+        private final String hint;
+        HintTextField(String hint, int columns) {
+            super(columns); this.hint = hint;
+            addFocusListener(new java.awt.event.FocusAdapter() {
+                @Override public void focusGained(java.awt.event.FocusEvent e) { repaint(); }
+                @Override public void focusLost(java.awt.event.FocusEvent e) { repaint(); }
+            });
+        }
+        @Override protected void paintComponent(Graphics g) {
+            Graphics2D graphics = smooth(g);
+            graphics.setColor(getBackground());
+            graphics.fillRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 8, 8);
+            graphics.dispose();
+            super.paintComponent(g);
+            graphics = smooth(g);
+            Insets insets = getInsets();
+            if (ICON_FONT != null) new GlyphIcon(IC_SEARCH, 12, SUBTLE).paintIcon(this, graphics, 10, (getHeight() - 14) / 2);
+            if (getText().isEmpty()) {
+                graphics.setColor(SUBTLE);
+                graphics.setFont(getFont());
+                FontMetrics metrics = graphics.getFontMetrics();
+                graphics.drawString(hint, insets.left, (getHeight() - metrics.getHeight()) / 2 + metrics.getAscent());
+            }
+            graphics.dispose();
+        }
+    }
+
+    private static class HintTextArea extends JTextArea {
+        private final String hint;
+        HintTextArea(String hint, int rows, int columns) { super(rows, columns); this.hint = hint; }
+        @Override protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            if (!getText().isEmpty()) return;
+            Graphics2D graphics = smooth(g);
+            graphics.setColor(SUBTLE);
+            graphics.setFont(getFont());
+            Insets insets = getInsets();
+            graphics.drawString(hint, insets.left, insets.top + graphics.getFontMetrics().getAscent());
+            graphics.dispose();
+        }
+    }
+
+    /** Kotak centang & tombol pilihan yang digambar sendiri agar menyatu dengan tema gelap. */
+    private static class ChoiceIcon implements Icon {
+        private final boolean radio;
+        ChoiceIcon(boolean radio) { this.radio = radio; }
+        @Override public int getIconWidth() { return 16; }
+        @Override public int getIconHeight() { return 16; }
+        @Override public void paintIcon(Component c, Graphics g, int x, int y) {
+            boolean on = ((AbstractButton) c).isSelected();
+            Graphics2D graphics = smooth(g);
+            if (radio) {
+                graphics.setColor(on ? ACCENT : BORDER_STRONG);
+                graphics.setStroke(new BasicStroke(1.5f));
+                graphics.drawOval(x + 1, y + 1, 13, 13);
+                if (on) graphics.fillOval(x + 5, y + 5, 6, 6);
+            } else {
+                graphics.setColor(on ? ACCENT : INPUT);
+                graphics.fillRoundRect(x + 1, y + 1, 14, 14, 5, 5);
+                graphics.setColor(on ? ACCENT : BORDER_STRONG);
+                graphics.drawRoundRect(x + 1, y + 1, 14, 14, 5, 5);
+                if (on) {
+                    graphics.setColor(ON_ACCENT);
+                    graphics.setStroke(new BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                    graphics.drawPolyline(new int[]{x + 4, x + 7, x + 12}, new int[]{y + 8, y + 11, y + 5}, 3);
+                }
+            }
+            graphics.dispose();
+        }
+    }
+
+    private static class ThinScrollBarUI extends javax.swing.plaf.basic.BasicScrollBarUI {
+        @Override protected void configureScrollBarColors() { trackColor = PANEL; thumbColor = BORDER_STRONG; }
+        @Override protected JButton createDecreaseButton(int orientation) { return zeroButton(); }
+        @Override protected JButton createIncreaseButton(int orientation) { return zeroButton(); }
+        private static JButton zeroButton() { JButton b = new JButton(); b.setPreferredSize(new Dimension(0, 0)); return b; }
+        @Override protected void paintTrack(Graphics g, JComponent c, Rectangle r) {
+            g.setColor(c.getParent() != null ? c.getParent().getBackground() : PANEL);
+            g.fillRect(r.x, r.y, r.width, r.height);
+        }
+        @Override protected void paintThumb(Graphics g, JComponent c, Rectangle r) {
+            if (r.isEmpty()) return;
+            Graphics2D graphics = smooth(g);
+            graphics.setColor(isThumbRollover() ? new Color(62, 82, 113) : thumbColor);
+            graphics.fillRoundRect(r.x + 3, r.y + 3, r.width - 6, r.height - 6, 6, 6);
+            graphics.dispose();
+        }
+    }
+
+    private static class FlatComboUI extends javax.swing.plaf.basic.BasicComboBoxUI {
+        @Override protected JButton createArrowButton() {
+            JButton arrow = new JButton(new GlyphIcon(IC_CHEVRON_DOWN, 10, MUTED));
+            arrow.setOpaque(false); arrow.setContentAreaFilled(false); arrow.setBorderPainted(false); arrow.setFocusPainted(false);
+            if (ICON_FONT == null) arrow.setText("▾");
+            arrow.setForeground(MUTED);
+            return arrow;
+        }
+        @Override public void paintCurrentValueBackground(Graphics g, Rectangle bounds, boolean hasFocus) { }
+        @Override public void paint(Graphics g, JComponent c) {
+            Graphics2D graphics = smooth(g);
+            graphics.setColor(INPUT);
+            graphics.fillRoundRect(0, 0, c.getWidth() - 1, c.getHeight() - 1, 8, 8);
+            graphics.dispose();
+            super.paint(g, c);
+        }
+        @Override protected javax.swing.plaf.basic.ComboPopup createPopup() {
+            javax.swing.plaf.basic.BasicComboPopup popup = new javax.swing.plaf.basic.BasicComboPopup(comboBox);
+            popup.setBorder(BorderFactory.createLineBorder(BORDER_STRONG));
+            return popup;
+        }
+    }
+
+    private static JLabel label(String text, boolean strong, int size, Color color) {
+        JLabel label = new JLabel(text);
+        label.setFont(font(strong, size));
+        label.setForeground(color);
+        return label;
+    }
+
+    // Isi menu memakai tombol biasa agar tampilannya sama dengan bagian lain (menu bawaan Windows berbingkai putih).
+    private static JButton menuItem(String text, char glyph, boolean danger, Runnable action) {
+        JButton item = ghost(text, glyph);
+        item.setHorizontalAlignment(SwingConstants.LEFT);
+        item.setFont(font(false, 13));
+        item.setIconTextGap(10);
+        item.setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 22));
+        if (danger) item.putClientProperty("baseColor", DANGER);
+        item.addActionListener(e -> action.run());
+        return item;
+    }
+
+    private static JPopupMenu popupMenu(JButton... items) {
+        JPopupMenu menu = new JPopupMenu();
+        menu.setUI(new javax.swing.plaf.basic.BasicPopupMenuUI());
+        menu.setLayout(new BoxLayout(menu, BoxLayout.Y_AXIS));
+        menu.setBackground(PANEL);
+        menu.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createLineBorder(BORDER_STRONG),
+            BorderFactory.createEmptyBorder(4, 4, 4, 4)));
+        for (JButton item : items) {
+            if (item == null) {
+                JPanel separator = new JPanel();
+                separator.setBackground(BORDER);
+                separator.setPreferredSize(new Dimension(1, 1));
+                separator.setMaximumSize(new Dimension(Integer.MAX_VALUE, 1));
+                menu.add(Box.createVerticalStrut(4)); menu.add(separator); menu.add(Box.createVerticalStrut(4));
+            } else {
+                item.addActionListener(e -> menu.setVisible(false));
+                item.setAlignmentX(Component.LEFT_ALIGNMENT);
+                Dimension size = item.getPreferredSize();
+                item.setPreferredSize(new Dimension(size.width + 24, size.height));
+                item.setMaximumSize(new Dimension(Integer.MAX_VALUE, size.height));
+                menu.add(item);
+            }
+        }
+        return menu;
+    }
+
+    private static JButton moreButton(JPopupMenu menu) {
+        JButton more = secondary("", IC_MORE);
+        if (ICON_FONT == null) more.setText("⋯");
+        more.setToolTipText("Tindakan lain");
+        // Tombol ini selalu berada di baris bawah, jadi menu dibuka ke atas.
+        more.addActionListener(e -> menu.show(more, 0, -menu.getPreferredSize().height - 4));
+        return more;
+    }
+
+    /** Kartu: latar sedikit lebih terang dengan garis tepi tipis; isi dipotong mengikuti sudut membulat. */
+    private static JPanel card(LayoutManager layout) {
+        JPanel panel = new JPanel(layout) {
+            @Override protected void paintComponent(Graphics g) {
+                Graphics2D graphics = smooth(g);
+                graphics.setColor(getBackground());
+                graphics.fillRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 12, 12);
+                graphics.dispose();
+            }
+            @Override protected void paintChildren(Graphics g) {
+                Graphics2D graphics = (Graphics2D) g.create();
+                graphics.clip(new java.awt.geom.RoundRectangle2D.Float(1, 1, getWidth() - 2, getHeight() - 2, 11, 11));
+                super.paintChildren(graphics);
+                graphics.dispose();
+            }
+            @Override protected void paintBorder(Graphics g) {
+                Graphics2D graphics = smooth(g);
+                graphics.setColor(BORDER);
+                graphics.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 12, 12);
+                graphics.dispose();
+            }
+        };
+        panel.setOpaque(false);
+        panel.setBackground(PANEL);
+        panel.setBorder(BorderFactory.createEmptyBorder(1, 1, 1, 1));
+        return panel;
+    }
+
+    private static JPanel row(int gap, Component... components) {
+        JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        panel.setOpaque(false);
+        for (int i = 0; i < components.length; i++) {
+            if (i > 0) panel.add(Box.createHorizontalStrut(gap));
+            panel.add(components[i]);
+        }
+        return panel;
+    }
+
+    private static JPanel pageHeader(String title, JLabel subtitle, Component right) {
+        JPanel header = new JPanel(new BorderLayout(16, 0));
+        header.setOpaque(false);
+        JPanel titles = new JPanel(new GridLayout(2, 1, 0, 0));
+        titles.setOpaque(false);
+        titles.add(label(title, true, 20, TEXT));
+        subtitle.setFont(font(false, 12)); subtitle.setForeground(SUBTLE);
+        titles.add(subtitle);
+        header.add(titles, BorderLayout.WEST);
+        if (right != null) {
+            JPanel holder = new JPanel(new GridBagLayout());
+            holder.setOpaque(false);
+            holder.add(right);
+            header.add(holder, BorderLayout.EAST);
+        }
+        return header;
+    }
+
+    private static String longDate(String date) {
+        return LocalDate.parse(date).format(DateTimeFormatter.ofPattern("EEEE, d MMMM yyyy", Locale.forLanguageTag("id-ID")));
+    }
+
     private void styleTable(JTable table) {
-        table.setBackground(INPUT);
+        table.setBackground(PANEL);
         table.setForeground(TEXT);
-        table.setSelectionBackground(new Color(35, 85, 102));
+        table.setSelectionBackground(ROW_SELECTED);
         table.setSelectionForeground(TEXT);
-        table.setGridColor(BORDER);
+        table.setGridColor(ROW_LINE);
         table.setShowVerticalLines(false);
+        table.setShowHorizontalLines(true);
         table.setIntercellSpacing(new Dimension(0, 1));
-        table.setFont(new Font("SansSerif", Font.PLAIN, 14));
-        table.getTableHeader().setPreferredSize(new Dimension(10, 38));
+        table.setRowHeight(34);
+        table.setFont(font(false, 13));
+        table.setFillsViewportHeight(true);
+        table.getTableHeader().setPreferredSize(new Dimension(10, 34));
+        table.getTableHeader().setBackground(PANEL);
+        table.getTableHeader().setReorderingAllowed(false);
         table.getTableHeader().setDefaultRenderer((t, value, selected, focus, row, column) -> {
-            JLabel label = new JLabel("  " + value);
+            JLabel label = label(String.valueOf(value), false, 12, SUBTLE);
             label.setOpaque(true);
-            label.setBackground(new Color(28, 47, 72));
-            label.setForeground(MUTED);
-            label.setFont(new Font("SansSerif", Font.BOLD, 13));
+            label.setBackground(PANEL);
+            label.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, BORDER),
+                BorderFactory.createEmptyBorder(0, 16, 0, 8)));
             return label;
         });
         table.setDefaultRenderer(Object.class, new DefaultTableCellRenderer() {
             @Override public Component getTableCellRendererComponent(JTable t, Object value, boolean selected,
                                                                        boolean focus, int row, int column) {
-                super.getTableCellRendererComponent(t, value, selected, focus, row, column);
-                setBackground(selected ? t.getSelectionBackground() : (row % 2 == 0 ? INPUT : PANEL));
-                setForeground(TEXT);
-                setBorder(BorderFactory.createEmptyBorder(0, 12, 0, 8));
+                super.getTableCellRendererComponent(t, value, selected, false, row, column);
+                setBackground(selected ? ROW_SELECTED : PANEL);
+                String name = t.getColumnName(column);
+                setForeground(name.startsWith("Nomor") ? TEXT : MUTED);
+                setFont(font(false, 13));
+                setBorder(BorderFactory.createEmptyBorder(0, 16, 0, 8));
                 return this;
             }
         });
     }
 
+    private JScrollPane tableScroll(JTable table) {
+        JScrollPane scroll = new JScrollPane(table);
+        scroll.setBorder(BorderFactory.createEmptyBorder());
+        scroll.getViewport().setBackground(PANEL);
+        JPanel corner = new JPanel(); corner.setBackground(PANEL);
+        scroll.setCorner(ScrollPaneConstants.UPPER_RIGHT_CORNER, corner);
+        return scroll;
+    }
+
     private void styleTree(Component component) {
         if (component instanceof JLabel label) {
-            label.setForeground(TEXT);
-            if (label.getFont().getSize() < 14) label.setFont(new Font("SansSerif", Font.PLAIN, 13));
+            if (label.getForeground() instanceof javax.swing.plaf.UIResource) label.setForeground(TEXT);
+            if (label.getFont() instanceof javax.swing.plaf.UIResource) label.setFont(font(false, 13));
         }
         if (component instanceof JTextArea area) {
-            area.setBackground(INPUT); area.setForeground(TEXT); area.setCaretColor(ACCENT);
-            area.setSelectionColor(new Color(40, 91, 112));
-            area.setFont(new Font("Monospaced", Font.PLAIN, 13));
+            area.setBackground(PANEL); area.setForeground(TEXT); area.setCaretColor(ACCENT);
+            area.setSelectionColor(ROW_SELECTED); area.setSelectedTextColor(TEXT);
+            area.setFont(new Font(FONT_MONO, Font.PLAIN, 13));
             area.setBorder(BorderFactory.createEmptyBorder(12, 14, 12, 14));
         }
         if (component instanceof JTextField field) {
+            field.setOpaque(false);
             field.setBackground(INPUT); field.setForeground(TEXT); field.setCaretColor(ACCENT);
-            field.setSelectionColor(new Color(40, 91, 112));
-            field.setFont(new Font("SansSerif", Font.PLAIN, 14));
-            field.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createLineBorder(BORDER),
-                BorderFactory.createEmptyBorder(6, 9, 6, 9)));
+            field.setSelectionColor(ROW_SELECTED); field.setSelectedTextColor(TEXT);
+            field.setFont(font(false, 13));
+            field.setBorder(fieldBorder(field instanceof HintTextField && ICON_FONT != null ? 30 : 10));
         }
         if (component instanceof JComboBox<?> combo) {
+            combo.setUI(new FlatComboUI());
+            combo.setOpaque(false);
             combo.setBackground(INPUT); combo.setForeground(TEXT);
-            combo.setFont(new Font("SansSerif", Font.PLAIN, 13));
+            combo.setFont(font(false, 13));
+            combo.setBorder(new RoundBorder(BORDER_STRONG, 8, 1, 6, 1, 2));
             combo.setRenderer(new DefaultListCellRenderer() {
                 @Override public Component getListCellRendererComponent(JList<?> list, Object value, int index,
                                                                           boolean selected, boolean focused) {
                     JLabel label = (JLabel) super.getListCellRendererComponent(list, value, index, selected, focused);
-                    label.setBackground(selected ? new Color(40, 91, 112) : INPUT);
+                    list.setBackground(PANEL);
+                    label.setOpaque(index >= 0);
+                    label.setBackground(selected ? HOVER : PANEL);
                     label.setForeground(TEXT);
-                    label.setBorder(BorderFactory.createEmptyBorder(4, 9, 4, 7));
+                    label.setFont(font(false, 13));
+                    label.setBorder(BorderFactory.createEmptyBorder(5, 8, 5, 8));
                     return label;
                 }
             });
         }
+        if (component instanceof JCheckBox box) { box.setIcon(new ChoiceIcon(false)); box.setSelectedIcon(new ChoiceIcon(false)); }
+        if (component instanceof JRadioButton radio) { radio.setIcon(new ChoiceIcon(true)); radio.setSelectedIcon(new ChoiceIcon(true)); }
         if (component instanceof JScrollPane scroll) {
-            scroll.setBorder(BorderFactory.createLineBorder(BORDER));
-            scroll.getViewport().setBackground(INPUT);
-        }
-        if (component instanceof JTabbedPane pane) {
-            pane.setBackground(PANEL); pane.setForeground(TEXT);
-            pane.setFont(new Font("SansSerif", Font.BOLD, 13));
-            pane.setUI(new BasicTabbedPaneUI() {
-                @Override protected void installDefaults() {
-                    super.installDefaults();
-                    tabInsets = new Insets(10, 16, 10, 16);
-                }
-                @Override protected void paintTabBackground(Graphics g, int place, int index, int x, int y,
-                                                                 int width, int height, boolean selected) {
-                    g.setColor(selected ? new Color(33, 78, 79) : PANEL);
-                    g.fillRoundRect(x, y, width, height, 12, 12);
-                }
-                @Override protected void paintTabBorder(Graphics g, int place, int index, int x, int y,
-                                                             int width, int height, boolean selected) { }
-                @Override protected void paintContentBorder(Graphics g, int place, int selected) { }
-            });
+            scroll.getVerticalScrollBar().setUI(new ThinScrollBarUI());
+            scroll.getHorizontalScrollBar().setUI(new ThinScrollBarUI());
+            scroll.getVerticalScrollBar().setPreferredSize(new Dimension(10, 0));
+            scroll.getVerticalScrollBar().setUnitIncrement(16);
         }
         if (component instanceof Container container)
             for (Component child : container.getComponents()) styleTree(child);
@@ -680,33 +1056,26 @@ public class NomorSorter extends JFrame {
         deviceGroup = new ButtonGroup();
         for (int number = 1; number <= deviceCount; number++) {
             final int deviceNumber = number;
-            JToggleButton device = new JToggleButton("Device " + number);
-            device.setFont(new Font("SansSerif", Font.BOLD, 13));
-            device.setPreferredSize(new Dimension(112, 34));
-            device.setFocusPainted(false);
+            JToggleButton device = styled(new JToggleButton("Device " + number), Kind.TAB, (char) 0);
             device.setSelected(number == activeDevice);
-            device.setBackground(INPUT);
-            device.setForeground(number == activeDevice ? BACKGROUND : TEXT);
-            device.setUI(new RoundedButtonUI());
-            device.setOpaque(false);
-            device.setContentAreaFilled(false);
-            device.setBorder(BorderFactory.createEmptyBorder(8, 13, 8, 13));
-            device.addItemListener(e -> device.setForeground(device.isSelected() ? BACKGROUND : TEXT));
             device.addActionListener(e -> switchDevice(deviceNumber));
+            if (number == deviceCount && deviceCount > 1) {
+                // Device terakhir dapat dihapus lewat klik kanan (hanya jika belum berisi data).
+                device.setToolTipText("Klik kanan untuk menghapus device ini");
+                JPopupMenu remove = popupMenu(menuItem("Hapus Device " + number, IC_DELETE, true, this::removeLastDevice));
+                device.addMouseListener(new java.awt.event.MouseAdapter() {
+                    @Override public void mousePressed(java.awt.event.MouseEvent e) { maybeShow(e); }
+                    @Override public void mouseReleased(java.awt.event.MouseEvent e) { maybeShow(e); }
+                    private void maybeShow(java.awt.event.MouseEvent e) { if (e.isPopupTrigger()) remove.show(device, e.getX(), e.getY()); }
+                });
+            }
             deviceGroup.add(device);
             devicesPanel.add(device);
         }
-        JButton addDevice = button("+ Tambah device", new Color(27, 137, 93));
-        addDevice.setBorder(BorderFactory.createEmptyBorder(8, 13, 8, 13));
+        JButton addDevice = iconButton(IC_ADD, "Tambah device");
+        if (ICON_FONT == null) addDevice.setText("+");
         addDevice.addActionListener(e -> addDevice());
         devicesPanel.add(addDevice);
-        if (deviceCount > 1) {
-            JButton removeDevice = button("− Hapus Device " + deviceCount, new Color(137, 68, 83));
-            removeDevice.setToolTipText("Hanya bisa jika device terakhir tidak memiliki catatan di database");
-            removeDevice.setBorder(BorderFactory.createEmptyBorder(8, 13, 8, 13));
-            removeDevice.addActionListener(e -> removeLastDevice());
-            devicesPanel.add(removeDevice);
-        }
         devicesPanel.revalidate();
         devicesPanel.repaint();
     }
@@ -779,10 +1148,10 @@ public class NomorSorter extends JFrame {
     private void showCalendar(JButton anchor, String selectedDate, java.util.function.Consumer<String> onSelect) {
         LocalDate selected = LocalDate.parse(selectedDate);
         JPopupMenu popup = new JPopupMenu();
-        popup.setBorder(BorderFactory.createLineBorder(BORDER));
-        JPanel calendar = new JPanel(new BorderLayout(5, 8));
+        popup.setBorder(BorderFactory.createLineBorder(BORDER_STRONG));
+        JPanel calendar = new JPanel(new BorderLayout(5, 10));
         calendar.setBackground(PANEL);
-        calendar.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        calendar.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
         popup.add(calendar);
         YearMonth[] visibleMonth = {YearMonth.from(selected)};
         Runnable[] render = new Runnable[1];
@@ -790,11 +1159,11 @@ public class NomorSorter extends JFrame {
             calendar.removeAll();
             JPanel heading = new JPanel(new BorderLayout());
             heading.setOpaque(false);
-            JLabel month = new JLabel(visibleMonth[0].atDay(1).format(
-                DateTimeFormatter.ofPattern("MMMM yyyy", Locale.forLanguageTag("id-ID"))), SwingConstants.CENTER);
-            month.setForeground(TEXT);
-            month.setFont(new Font("SansSerif", Font.BOLD, 15));
-            JButton previous = button("‹", INPUT), next = button("›", INPUT);
+            JLabel month = label(visibleMonth[0].atDay(1).format(
+                DateTimeFormatter.ofPattern("MMMM yyyy", Locale.forLanguageTag("id-ID"))), true, 14, TEXT);
+            month.setHorizontalAlignment(SwingConstants.CENTER);
+            JButton previous = iconButton(IC_PREV, "Bulan sebelumnya"), next = iconButton(IC_NEXT, "Bulan berikutnya");
+            if (ICON_FONT == null) { previous.setText("‹"); next.setText("›"); }
             previous.addActionListener(e -> { visibleMonth[0] = visibleMonth[0].minusMonths(1); render[0].run(); });
             next.addActionListener(e -> { visibleMonth[0] = visibleMonth[0].plusMonths(1); render[0].run(); });
             heading.add(previous, BorderLayout.WEST);
@@ -805,25 +1174,26 @@ public class NomorSorter extends JFrame {
             JPanel days = new JPanel(new GridLayout(0, 7, 2, 2));
             days.setOpaque(false);
             for (String dayName : new String[]{"Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"}) {
-                JLabel name = new JLabel(dayName, SwingConstants.CENTER);
-                name.setForeground(MUTED);
+                JLabel name = label(dayName, false, 11, SUBTLE);
+                name.setHorizontalAlignment(SwingConstants.CENTER);
                 days.add(name);
             }
             int offset = visibleMonth[0].atDay(1).getDayOfWeek().getValue() - 1;
             for (int i = 0; i < offset; i++) days.add(new JLabel());
+            LocalDate now = LocalDate.now();
             for (int day = 1; day <= visibleMonth[0].lengthOfMonth(); day++) {
                 LocalDate choice = visibleMonth[0].atDay(day);
-                JButton date = button(Integer.toString(day), choice.equals(selected) ? ACCENT : INPUT);
-                date.setForeground(choice.equals(selected) ? BACKGROUND : TEXT);
-                date.setFont(new Font("SansSerif", Font.BOLD, 13));
+                JButton date = choice.equals(selected) ? primary(Integer.toString(day)) : ghost(Integer.toString(day), (char) 0);
+                if (choice.equals(now) && !choice.equals(selected)) date.putClientProperty("baseColor", ACCENT);
+                date.setFont(font(choice.equals(selected) || choice.equals(now), 13));
+                date.setHorizontalAlignment(SwingConstants.CENTER);
                 date.setBorder(BorderFactory.createEmptyBorder(2, 2, 2, 2));
-                date.setMargin(new Insets(0, 0, 0, 0));
-                date.setPreferredSize(new Dimension(40, 34));
+                date.setPreferredSize(new Dimension(38, 32));
                 date.addActionListener(e -> { popup.setVisible(false); onSelect.accept(choice.toString()); });
                 days.add(date);
             }
             calendar.add(days, BorderLayout.CENTER);
-            JButton todayButton = button("Hari ini", INPUT);
+            JButton todayButton = secondary("Hari ini", (char) 0);
             todayButton.addActionListener(e -> { popup.setVisible(false); onSelect.accept(today()); });
             calendar.add(todayButton, BorderLayout.SOUTH);
             popup.pack();
@@ -831,7 +1201,7 @@ public class NomorSorter extends JFrame {
             calendar.repaint();
         };
         render[0].run();
-        popup.show(anchor, 0, anchor.getHeight());
+        popup.show(anchor, anchor.getWidth() - popup.getPreferredSize().width, anchor.getHeight() + 4);
     }
 
     private boolean updateDateAtMidnight() {
@@ -1069,15 +1439,16 @@ public class NomorSorter extends JFrame {
     private JCheckBox checkBox(String label, boolean selected) {
         JCheckBox box = new JCheckBox(label, selected);
         box.setOpaque(false); box.setForeground(TEXT); box.setFocusPainted(false);
-        box.setFont(new Font("SansSerif", Font.PLAIN, 13));
+        box.setFont(font(false, 13));
+        box.setIconTextGap(9);
+        box.setBorder(BorderFactory.createEmptyBorder(5, 2, 5, 2));
         box.setAlignmentX(Component.LEFT_ALIGNMENT);
         return box;
     }
 
     private JLabel sectionLabel(String text) {
-        JLabel label = new JLabel(text);
-        label.setFont(new Font("SansSerif", Font.BOLD, 14));
-        label.setForeground(TEXT);
+        JLabel label = label(text, true, 13, TEXT);
+        label.setBorder(BorderFactory.createEmptyBorder(0, 0, 6, 0));
         label.setAlignmentX(Component.LEFT_ALIGNMENT);
         return label;
     }
@@ -1099,31 +1470,34 @@ public class NomorSorter extends JFrame {
         Locale indonesia = Locale.forLanguageTag("id-ID");
 
         JDialog dialog = new JDialog(this, "Ekspor nomor", true);
-        JPanel content = new JPanel(new BorderLayout(16, 14));
-        content.setBackground(PANEL);
-        content.setBorder(BorderFactory.createEmptyBorder(18, 20, 16, 20));
+        JPanel content = new JPanel(new BorderLayout(28, 18));
+        content.setBackground(BACKGROUND);
+        content.setBorder(BorderFactory.createEmptyBorder(22, 24, 18, 24));
         dialog.setContentPane(content);
 
         // Kolom kiri: daftar tanggal yang bisa dicentang beberapa sekaligus.
         JPanel left = new JPanel(new BorderLayout(0, 8));
         left.setOpaque(false);
-        left.add(sectionLabel("1. Pilih tanggal (boleh lebih dari satu)"), BorderLayout.NORTH);
+        left.add(sectionLabel("Tanggal"), BorderLayout.NORTH);
         JPanel dateList = new JPanel();
         dateList.setLayout(new BoxLayout(dateList, BoxLayout.Y_AXIS));
-        dateList.setBackground(INPUT);
-        dateList.setBorder(BorderFactory.createEmptyBorder(6, 8, 6, 8));
+        dateList.setBackground(PANEL);
+        dateList.setBorder(BorderFactory.createEmptyBorder(6, 12, 6, 12));
         Map<String, JCheckBox> dateBoxes = new LinkedHashMap<>();
         for (String date : dates) {
             String day = LocalDate.parse(date).format(DateTimeFormatter.ofPattern("EEEE", indonesia));
-            JCheckBox box = checkBox(date + "   ·   " + day + "   ·   " + perDate.getOrDefault(date, 0) + " catatan", presetDates.contains(date));
+            JCheckBox box = checkBox(date + "  ·  " + day + "  ·  " + perDate.getOrDefault(date, 0) + " catatan", presetDates.contains(date));
             dateBoxes.put(date, box);
             dateList.add(box);
         }
         JScrollPane dateScroll = new JScrollPane(dateList);
-        dateScroll.setPreferredSize(new Dimension(360, 330));
-        dateScroll.getVerticalScrollBar().setUnitIncrement(16);
-        left.add(dateScroll, BorderLayout.CENTER);
-        JPanel quick = new JPanel(new GridLayout(2, 1, 0, 6));
+        dateScroll.setBorder(BorderFactory.createEmptyBorder());
+        dateScroll.getViewport().setBackground(PANEL);
+        JPanel dateCard = card(new BorderLayout());
+        dateCard.setPreferredSize(new Dimension(360, 320));
+        dateCard.add(dateScroll);
+        left.add(dateCard, BorderLayout.CENTER);
+        JPanel quick = new JPanel(new GridLayout(2, 1, 0, 8));
         quick.setOpaque(false);
         JPanel monthRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
         monthRow.setOpaque(false);
@@ -1133,15 +1507,12 @@ public class NomorSorter extends JFrame {
             months.putIfAbsent(YearMonth.parse(key).atDay(1).format(DateTimeFormatter.ofPattern("MMMM yyyy", indonesia)), key);
         }
         JComboBox<String> monthPicker = new JComboBox<>(months.keySet().toArray(new String[0]));
-        monthPicker.setPreferredSize(new Dimension(150, 30));
-        JButton pickMonth = button("Centang bulan ini", new Color(57, 113, 176));
-        pickMonth.setBorder(BorderFactory.createEmptyBorder(7, 11, 7, 11));
-        monthRow.add(new JLabel("Bulan:")); monthRow.add(monthPicker); monthRow.add(pickMonth);
-        JPanel allRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+        monthPicker.setPreferredSize(new Dimension(150, 34));
+        JButton pickMonth = secondary("Centang bulan ini", (char) 0);
+        monthRow.add(monthPicker); monthRow.add(pickMonth);
+        JPanel allRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         allRow.setOpaque(false);
-        JButton pickAll = button("Centang semua tanggal", INPUT), pickNone = button("Kosongkan", INPUT);
-        pickAll.setBorder(BorderFactory.createEmptyBorder(7, 11, 7, 11));
-        pickNone.setBorder(BorderFactory.createEmptyBorder(7, 11, 7, 11));
+        JButton pickAll = ghost("Centang semua", (char) 0), pickNone = ghost("Kosongkan", (char) 0);
         allRow.add(pickAll); allRow.add(pickNone);
         quick.add(monthRow); quick.add(allRow);
         left.add(quick, BorderLayout.SOUTH);
@@ -1151,8 +1522,8 @@ public class NomorSorter extends JFrame {
         JPanel right = new JPanel();
         right.setLayout(new BoxLayout(right, BoxLayout.Y_AXIS));
         right.setOpaque(false);
-        right.add(sectionLabel("2. Pilih device"));
-        JPanel devicesRow = new JPanel(new GridLayout(0, 3, 6, 2));
+        right.add(sectionLabel("Device"));
+        JPanel devicesRow = new JPanel(new GridLayout(0, 3, 10, 0));
         devicesRow.setOpaque(false);
         devicesRow.setAlignmentX(Component.LEFT_ALIGNMENT);
         Map<Integer, JCheckBox> deviceBoxes = new LinkedHashMap<>();
@@ -1162,32 +1533,34 @@ public class NomorSorter extends JFrame {
             devicesRow.add(box);
         }
         right.add(devicesRow);
-        right.add(Box.createVerticalStrut(12));
-        right.add(sectionLabel("3. Pilih status"));
+        right.add(Box.createVerticalStrut(18));
+        right.add(sectionLabel("Status"));
         JCheckBox includeYes = checkBox("Sudah WA", presetStatus == null || presetStatus.contains(true));
         JCheckBox includeNo = checkBox("Belum WA", presetStatus == null || presetStatus.contains(false));
         JPanel statusRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         statusRow.setOpaque(false); statusRow.setAlignmentX(Component.LEFT_ALIGNMENT);
-        statusRow.add(includeYes); statusRow.add(Box.createHorizontalStrut(12)); statusRow.add(includeNo);
+        statusRow.add(includeYes); statusRow.add(Box.createHorizontalStrut(20)); statusRow.add(includeNo);
         right.add(statusRow);
-        right.add(Box.createVerticalStrut(12));
-        right.add(sectionLabel("4. Format berkas"));
-        JRadioButton asText = new JRadioButton("Notepad (.txt) — satu nomor per baris", true);
-        JRadioButton asExcel = new JRadioButton("Excel (.xlsx) — tabel tanggal, device, COM, nomor, status");
+        right.add(Box.createVerticalStrut(18));
+        right.add(sectionLabel("Format berkas"));
+        JRadioButton asText = new JRadioButton("Notepad (.txt)  ·  satu nomor per baris", true);
+        JRadioButton asExcel = new JRadioButton("Excel (.xlsx)  ·  tanggal, device, COM, nomor, status");
         ButtonGroup formatGroup = new ButtonGroup();
         for (JRadioButton radio : new JRadioButton[]{asText, asExcel}) {
             radio.setOpaque(false); radio.setForeground(TEXT); radio.setFocusPainted(false);
-            radio.setFont(new Font("SansSerif", Font.PLAIN, 13));
+            radio.setFont(font(false, 13));
+            radio.setIconTextGap(9);
+            radio.setBorder(BorderFactory.createEmptyBorder(5, 2, 5, 2));
             radio.setAlignmentX(Component.LEFT_ALIGNMENT);
             formatGroup.add(radio); right.add(radio);
         }
-        right.add(Box.createVerticalStrut(12));
-        right.add(sectionLabel("5. Pengaturan nomor"));
-        JPanel formatRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
+        right.add(Box.createVerticalStrut(18));
+        right.add(sectionLabel("Nomor"));
+        JPanel formatRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 2));
         formatRow.setOpaque(false); formatRow.setAlignmentX(Component.LEFT_ALIGNMENT);
         JComboBox<String> numberFormat = new JComboBox<>(NUMBER_FORMATS);
-        numberFormat.setPreferredSize(new Dimension(150, 30));
-        formatRow.add(new JLabel("Awalan nomor:")); formatRow.add(numberFormat);
+        numberFormat.setPreferredSize(new Dimension(160, 34));
+        formatRow.add(label("Awalan", false, 13, MUTED)); formatRow.add(Box.createHorizontalStrut(10)); formatRow.add(numberFormat);
         right.add(formatRow);
         JCheckBox unique = checkBox("Buang nomor duplikat (nomor yang sama hanya ditulis sekali)", true);
         unique.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -1196,11 +1569,11 @@ public class NomorSorter extends JFrame {
         content.add(right, BorderLayout.CENTER);
 
         JLabel summary = new JLabel();
-        summary.setFont(new Font("SansSerif", Font.BOLD, 13));
-        summary.setForeground(ACCENT);
-        JButton cancel = button("Batal", INPUT), save = button("Ekspor…", new Color(16, 159, 128));
+        JButton cancel = secondary("Batal", (char) 0), save = primary("Ekspor…");
         JPanel bottomRow = new JPanel(new BorderLayout(10, 0));
         bottomRow.setOpaque(false);
+        bottomRow.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, BORDER),
+            BorderFactory.createEmptyBorder(14, 0, 0, 0)));
         JPanel bottomButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         bottomButtons.setOpaque(false);
         bottomButtons.add(cancel); bottomButtons.add(save);
@@ -1270,7 +1643,7 @@ public class NomorSorter extends JFrame {
         });
 
         styleTree(content);
-        summary.setFont(new Font("SansSerif", Font.BOLD, 13));
+        summary.setFont(font(true, 13));
         summary.setForeground(ACCENT);
         updateSummary.run();
         dialog.pack();
@@ -1380,18 +1753,11 @@ public class NomorSorter extends JFrame {
     private JPanel createDatabasePage(boolean isYes) {
         int index = isYes ? 1 : 0;
         String status = isYes ? "Sudah WA" : "Belum WA";
-        JPanel page = new RoundedPanel(new BorderLayout(12, 12));
-        JPanel heading = new JPanel(new BorderLayout(0, 12));
-        heading.setOpaque(false);
-        JLabel title = new JLabel("Database " + status + " — Semua Device");
-        title.setFont(new Font("SansSerif", Font.BOLD, 26));
-        heading.add(title, BorderLayout.NORTH);
-        JPanel dateRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
-        dateRow.setOpaque(false);
-        dateRow.add(new JLabel("Pilih tanggal:"));
-        databaseDates[index].setPreferredSize(new Dimension(145, 30));
-        dateRow.add(databaseDates[index]);
-        JButton calendarDate = button("Kalender", new Color(57, 113, 176));
+        JPanel page = new JPanel(new BorderLayout(0, 14));
+        page.setOpaque(false);
+        databaseDates[index].setPreferredSize(new Dimension(140, 34));
+        JButton calendarDate = iconButton(IC_CALENDAR, "Pilih tanggal dari kalender");
+        if (ICON_FONT == null) calendarDate.setText("Kalender");
         calendarDate.addActionListener(e -> {
             String selected = (String) databaseDates[index].getSelectedItem();
             showCalendar(calendarDate, selected == null ? today() : selected, date -> {
@@ -1402,20 +1768,16 @@ public class NomorSorter extends JFrame {
                 databaseDates[index].setSelectedItem(date);
             });
         });
-        dateRow.add(calendarDate);
-        JButton inputOnDate = button("Input pada tanggal ini", new Color(57, 113, 176));
+        JButton inputOnDate = secondary("Input pada tanggal ini", IC_INPUT);
+        inputOnDate.setToolTipText("Buka halaman input device dengan tanggal ini");
         inputOnDate.addActionListener(e -> {
             String selected = (String) databaseDates[index].getSelectedItem();
             if (selected == null) return;
-            try { switchInputDate(selected); pageLayout.show(pages, "devices"); }
+            try { switchInputDate(selected); pageLayout.show(pages, "devices"); navDevices.setSelected(true); }
             catch (IOException ex) { error("Gagal membuka tanggal input: " + ex.getMessage()); }
         });
-        dateRow.add(inputOnDate);
-        dateRow.add(Box.createHorizontalStrut(12));
-        dateRow.add(new JLabel("Cari nomor:"));
-        databaseSearch[index].setToolTipText("Cari dengan awalan 8, 08, 62, atau +62");
-        dateRow.add(databaseSearch[index]);
-        heading.add(dateRow, BorderLayout.SOUTH);
+        JPanel heading = pageHeader(status, new JLabel("Database bersama semua device"),
+            row(6, databaseDates[index], calendarDate, Box.createHorizontalStrut(4), inputOnDate));
         page.add(heading, BorderLayout.NORTH);
 
         databaseModels[index] = new DefaultTableModel(new Object[]{"Device", "COM", "Nomor"}, 0) {
@@ -1423,10 +1785,11 @@ public class NomorSorter extends JFrame {
         };
         JTable table = new JTable(databaseModels[index]);
         databaseTables[index] = table;
-        table.setRowHeight(31);
         table.setAutoCreateRowSorter(true);
         table.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
         styleTable(table);
+        table.getColumnModel().getColumn(0).setMaxWidth(140);
+        table.getColumnModel().getColumn(1).setMaxWidth(120);
         databaseSearch[index].getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
             public void insertUpdate(javax.swing.event.DocumentEvent e) { filterDatabase(index); }
             public void removeUpdate(javax.swing.event.DocumentEvent e) { filterDatabase(index); }
@@ -1442,35 +1805,38 @@ public class NomorSorter extends JFrame {
                 }
             }
         });
-        page.add(new JScrollPane(table), BorderLayout.CENTER);
+        databaseSearch[index].setPreferredSize(new Dimension(250, 34));
+        databaseInfo[index].setFont(font(false, 12));
+        databaseInfo[index].setForeground(SUBTLE);
+        JPanel toolbar = new JPanel(new BorderLayout(12, 0));
+        toolbar.setOpaque(false);
+        toolbar.add(databaseInfo[index], BorderLayout.WEST);
+        toolbar.add(databaseSearch[index], BorderLayout.EAST);
+        JPanel tableCard = card(new BorderLayout());
+        tableCard.add(tableScroll(table), BorderLayout.CENTER);
+        JPanel content = new JPanel(new BorderLayout(0, 10));
+        content.setOpaque(false);
+        content.add(toolbar, BorderLayout.NORTH);
+        content.add(tableCard, BorderLayout.CENTER);
+        page.add(content, BorderLayout.CENTER);
 
-        JPanel footer = new JPanel(new BorderLayout(0, 8));
-        footer.setOpaque(false);
-        JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
-        actions.setOpaque(false);
-        JButton copySelected = button("Salin nomor terpilih", new Color(57, 113, 176));
-        JButton copyAll = button("Salin semua nomor tanggal ini", new Color(31, 145, 111));
-        JButton deleteSelected = button("Hapus terpilih", new Color(171, 65, 77));
-        JButton deleteDate = button("Hapus semua pada tanggal ini", new Color(130, 55, 70));
+        JButton copySelected = secondary("Salin terpilih", IC_COPY);
+        JButton copyAll = secondary("Salin semua", (char) 0);
+        copyAll.setToolTipText("Salin semua nomor unik pada tanggal ini");
+        JButton exportDate = secondary("Ekspor", IC_EXPORT);
+        exportDate.setToolTipText("Ekspor ke Notepad (.txt) atau Excel (.xlsx)");
         copySelected.addActionListener(e -> copyDatabaseNumbers(index, true));
         copyAll.addActionListener(e -> copyDatabaseNumbers(index, false));
-        deleteSelected.addActionListener(e -> deleteDatabaseRecords(index, false));
-        deleteDate.addActionListener(e -> deleteDatabaseRecords(index, true));
-        JButton exportDate = button("Ekspor TXT/Excel", new Color(85, 93, 110));
         exportDate.addActionListener(e -> {
             String selected = (String) databaseDates[index].getSelectedItem();
             showExportDialog(Set.of(selected == null ? activeDate : selected), null, Set.of(isYes));
         });
-        actions.add(copySelected);
-        actions.add(copyAll);
-        actions.add(exportDate);
-        footer.add(actions, BorderLayout.NORTH);
-        JPanel deleteActions = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
-        deleteActions.setOpaque(false);
-        deleteActions.add(deleteSelected);
-        deleteActions.add(deleteDate);
-        footer.add(deleteActions, BorderLayout.CENTER);
-        footer.add(databaseInfo[index], BorderLayout.SOUTH);
+        JPopupMenu deleteMenu = popupMenu(
+            menuItem("Hapus terpilih dari database", IC_DELETE, true, () -> deleteDatabaseRecords(index, false)),
+            menuItem("Hapus semua pada tanggal ini", IC_CLEAR, true, () -> deleteDatabaseRecords(index, true)));
+        JPanel footer = new JPanel(new BorderLayout());
+        footer.setOpaque(false);
+        footer.add(row(8, copySelected, copyAll, exportDate, moreButton(deleteMenu)), BorderLayout.WEST);
         page.add(footer, BorderLayout.SOUTH);
         populateDatabaseDates(index);
         databaseDates[index].addActionListener(e -> {
@@ -1539,8 +1905,8 @@ public class NomorSorter extends JFrame {
             }
         });
         String date = (String) databaseDates[index].getSelectedItem();
-        if (date != null) databaseInfo[index].setText(date + " • Menampilkan " + table.getRowCount()
-            + " dari " + databaseModels[index].getRowCount() + " catatan. Klik nomor untuk menyalinnya.");
+        if (date != null) databaseInfo[index].setText(longDate(date) + "  ·  " + table.getRowCount()
+            + " dari " + databaseModels[index].getRowCount() + " catatan  ·  klik nomor untuk menyalin");
     }
 
     private void copyDatabaseNumbers(int index, boolean selectedOnly) {
@@ -1592,6 +1958,12 @@ public class NomorSorter extends JFrame {
 
     private void filter() {
         String q = search.getText().trim();
+        if (q.matches("[+0-9 ]+")) {
+            // Pencarian nomor menerima awalan 8, 08, 62, atau +62 seperti di halaman database.
+            q = q.replaceAll("[^0-9]", "");
+            if (q.startsWith("62")) q = q.substring(2);
+            else if (q.startsWith("0")) q = q.substring(1);
+        }
         sorters[tabs.getSelectedIndex()].setRowFilter(q.isEmpty() ? null : RowFilter.regexFilter("(?i)" + Pattern.quote(q), 1, 2));
     }
 
@@ -1609,11 +1981,15 @@ public class NomorSorter extends JFrame {
             for (String number : groups[i]) if (!hidden[i].contains(number))
                 models[i].addRow(new Object[]{n++, coms[i].getOrDefault(number, "—"), display(number)});
             tabs.setTitleAt(i, (i == 0 ? "Sudah WA" : "Belum WA") + " (" + models[i].getRowCount() + ")");
+            segments[i].setText((i == 0 ? "Sudah WA" : "Belum WA") + "   " + models[i].getRowCount());
         }
         updateCount();
     }
 
-    private void updateCount() { count.setText("Device " + activeDevice + "  •  " + activeDate + "  •  Riwayat terlihat: " + (models[0].getRowCount() + models[1].getRowCount()) + " nomor  •  Sudah WA: " + models[0].getRowCount() + "  •  Belum WA: " + models[1].getRowCount()); }
+    private void updateCount() {
+        count.setText("Device " + activeDevice + "  ·  " + (models[0].getRowCount() + models[1].getRowCount()) + " nomor terlihat");
+        pageSubtitle.setText(longDate(activeDate) + (activeDate.equals(today()) ? "" : "  ·  tanggal pilihan"));
+    }
     private void error(String message) { JOptionPane.showMessageDialog(this, message, "Nomor Sorter", JOptionPane.WARNING_MESSAGE); }
 
     // ===== Pembaruan otomatis dari GitHub Releases =====
@@ -1819,7 +2195,7 @@ public class NomorSorter extends JFrame {
         JWindow window = new JWindow();
         JLabel label = new JLabel("Memasang pembaruan Nomor Sorter…", SwingConstants.CENTER);
         label.setOpaque(true); label.setBackground(PANEL); label.setForeground(TEXT);
-        label.setFont(new Font("SansSerif", Font.BOLD, 14));
+        label.setFont(font(true, 14));
         label.setBorder(BorderFactory.createLineBorder(BORDER));
         window.add(label);
         window.setSize(360, 80);
@@ -1853,6 +2229,13 @@ public class NomorSorter extends JFrame {
             installUpdate(Long.parseLong(args[1]), Paths.get(args[2]), Paths.get(args[3]));
             return;
         }
+        // Dialog pesan dan pemilih berkas memakai tampilan bawaan Windows; komponen utama digambar sendiri.
+        try { UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName()); } catch (Exception ignored) { }
+        UIManager.put("ToolTip.background", PANEL);
+        UIManager.put("ToolTip.foreground", TEXT);
+        UIManager.put("ToolTip.border", BorderFactory.createCompoundBorder(BorderFactory.createLineBorder(BORDER_STRONG),
+            BorderFactory.createEmptyBorder(4, 8, 4, 8)));
+        UIManager.put("ToolTip.font", font(false, 12));
         SwingUtilities.invokeLater(() -> {
             try { new NomorSorter().setVisible(true); }
             catch (IOException ex) { JOptionPane.showMessageDialog(null, "Gagal membuka basis data: " + ex.getMessage()); }

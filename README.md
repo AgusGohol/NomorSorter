@@ -1,5 +1,21 @@
 # Nomor Sorter — Java siap dijalankan dengan JRE
 
+## Baru di versi 2.8.0 — tampilan baru
+
+Tampilan dirapikan agar lebih minimalis: satu warna aksen, huruf Segoe UI, ikon Windows, dan tombol dikelompokkan sesuai fungsinya. Semua fitur tetap ada, sebagian pindah tempat:
+
+| Dulu | Sekarang |
+| --- | --- |
+| Tombol Device 1–5 dan **+ Tambah device** | Tab **Device 1, Device 2, …** dan tombol **+** |
+| **− Hapus Device N** | Klik kanan tab device terakhir → **Hapus Device N** |
+| **Masukkan ke Sudah WA / Belum WA** | **Ke Sudah WA / Ke Belum WA** di bawah kotak input |
+| Tab Sudah WA / Belum WA | Tombol segmen **Sudah WA · Belum WA** (dengan jumlah) |
+| **Hapus nomor terpilih**, **Kosongkan / Pulihkan riwayat** | Menu **⋯** di bawah tabel |
+| **Hapus terpilih / Hapus semua** (halaman database) | Menu **⋯** di bawah tabel database |
+| **Pilih dari kalender** | Ikon kalender di samping pilihan tanggal |
+
+Kolom **Cari nomor** di halaman input kini juga menerima awalan `08`, `62`, dan `+62`.
+
 ## Baru di versi 2.7.0
 
 - **Jumlah device bisa ditambah.** Klik **+ Tambah device** di sebelah tombol device. Jumlah device disimpan di `data/jumlah-device.txt` (bawaan 5). Tombol **− Hapus Device N** hanya menghapus device terakhir, dan hanya jika device itu belum memiliki catatan di database, agar tidak ada nomor yang hilang dari tampilan.
