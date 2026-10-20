@@ -1,5 +1,9 @@
 # Nomor Sorter — Java siap dijalankan dengan JRE
 
+## Baru di versi 2.10.0
+
+- Tombol **Salin semua device** di samping menu **⋯** pada halaman Input device. Pilih **Sudah WA** atau **Belum WA**; aplikasi menyalin nomor dari semua device pada tanggal yang sedang aktif, urut per device (Device 1, Device 2, …). Nomor yang sama di beberapa device ikut tersalin sesuai jumlah device-nya, dan nomor yang disembunyikan dari riwayat device ikut tersalin. Fitur ini bersifat sementara.
+
 ## Baru di versi 2.9.0 — penyimpanan lebih aman
 
 - **Hanya satu jendela.** Jika Nomor Sorter dibuka dua kali dari folder yang sama, jendela kedua menolak dibuka. Dua jendela sebelumnya bisa saling menimpa nomor.

@@ -18,7 +18,7 @@ import java.util.regex.*;
 
 public class NomorSorter extends JFrame {
     // Naikkan bersama berkas VERSION setiap rilis; tag GitHub memakai format v<versi>.
-    static final String APP_VERSION = "2.9.0";
+    static final String APP_VERSION = "2.10.0";
     private static java.nio.channels.FileLock appLock;
     private static final String UPDATE_REPO = "AgusGohol/NomorSorter";
     // Palet: satu warna aksen (hijau) di atas permukaan biru gelap netral.
@@ -287,7 +287,7 @@ public class NomorSorter extends JFrame {
         count.setForeground(SUBTLE);
         JPanel actionBar = new JPanel(new BorderLayout(12, 0));
         actionBar.setOpaque(false);
-        actionBar.add(row(8, copySelected, copyAll, moreButton(deviceMenu)), BorderLayout.WEST);
+        actionBar.add(row(8, copySelected, copyAll, moreButton(deviceMenu), copyAllDevicesButton()), BorderLayout.WEST);
         actionBar.add(count, BorderLayout.EAST);
 
         JPanel devicePage = new JPanel(new BorderLayout(0, 14));
@@ -1900,6 +1900,33 @@ public class NomorSorter extends JFrame {
         copyText(lines.toString());
         count.setText(copied + " nomor Device " + activeDevice + " tanggal " + activeDate + " berhasil disalin.");
     }
+
+    // ----- SEMENTARA (2.10.0): tombol "Salin semua device". Untuk menghapusnya, hapus blok ini
+    // dan panggilan copyAllDevicesButton() di baris tombol halaman Input device. -----
+    private JButton copyAllDevicesButton() {
+        JButton button = secondary("Salin semua device", IC_COPY);
+        button.setToolTipText("Salin nomor dari semua device pada tanggal aktif, termasuk yang disembunyikan");
+        JPopupMenu choice = popupMenu(
+            menuItem("Sudah WA", IC_DONE, false, () -> copyAllDevices(true)),
+            menuItem("Belum WA", IC_PENDING, false, () -> copyAllDevices(false)));
+        button.addActionListener(e -> choice.show(button, 0, -choice.getPreferredSize().height - 4));
+        return button;
+    }
+
+    /** Salin per device (Device 1 dulu, lalu Device 2, …); nomor yang sama di dua device ikut tersalin dua kali. */
+    private void copyAllDevices(boolean sudah) {
+        Map<Integer, LinkedHashSet<String>> all = new TreeMap<>();
+        try { readShared(directory.resolve(activeDate).resolve(sudah ? "sudah-wa.db" : "belum-wa.db"), all, new TreeMap<>()); }
+        catch (IOException ex) { error("Gagal membaca database: " + ex.getMessage()); return; }
+        List<String> numbers = new ArrayList<>();
+        for (LinkedHashSet<String> group : all.values()) for (String number : group) numbers.add(display(number));
+        String status = sudah ? "Sudah WA" : "Belum WA";
+        if (numbers.isEmpty()) { error("Belum ada nomor " + status + " pada tanggal " + activeDate + "."); return; }
+        Toolkit.getDefaultToolkit().getSystemClipboard().setContents(
+            new java.awt.datatransfer.StringSelection(String.join(System.lineSeparator(), numbers)), null);
+        count.setText(numbers.size() + " nomor " + status + " dari " + all.size() + " device (" + activeDate + ") disalin");
+    }
+    // ----- akhir blok sementara -----
 
     private void copySelectedFromDevice() {
         int index = tabs.getSelectedIndex();
