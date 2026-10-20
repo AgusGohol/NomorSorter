@@ -1,5 +1,14 @@
 # Nomor Sorter — Java siap dijalankan dengan JRE
 
+## Baru di versi 2.9.0 — penyimpanan lebih aman
+
+- **Hanya satu jendela.** Jika Nomor Sorter dibuka dua kali dari folder yang sama, jendela kedua menolak dibuka. Dua jendela sebelumnya bisa saling menimpa nomor.
+- **Tidak menimpa data lain.** Setiap kali menyimpan, aplikasi membaca ulang database dari disk dan hanya menambahkan nomor baru, bukan mengganti seluruh isi device dengan salinan di memori.
+- **Langsung tertulis ke disk.** Berkas disimpan dengan mode sinkron sehingga tidak menjadi kosong (0 byte) bila PC mati mendadak.
+- **Jurnal** di `data/jurnal/<tahun-bulan>.txt`: setiap nomor yang disimpan atau dihapus dicatat, dan berkas ini hanya pernah ditambah, tidak pernah ditimpa. Di halaman **Belum WA / Sudah WA**, menu **⋯ → Pulihkan nomor yang hilang (dari jurnal)** mengembalikan nomor yang pernah disimpan tetapi tidak ada lagi di database. Nomor yang Anda hapus sendiri tidak ikut kembali.
+- **Cadangan harian otomatis** di `data/cadangan/<tanggal>.zip` saat aplikasi dibuka (disimpan 30 hari terakhir). Untuk memulihkan secara manual, tutup aplikasi lalu ekstrak folder tanggal dari ZIP ke folder `data`.
+- **Konfirmasi tanggal.** Jika device sedang memakai tanggal selain hari ini, aplikasi bertanya dulu: simpan ke tanggal itu, pakai hari ini, atau batal. Pesan setelah menyimpan juga menyebut device dan tanggalnya.
+
 ## Baru di versi 2.8.0 — tampilan baru
 
 Tampilan dirapikan agar lebih minimalis: satu warna aksen, huruf Segoe UI, ikon Windows, dan tombol dikelompokkan sesuai fungsinya. Semua fitur tetap ada, sebagian pindah tempat:

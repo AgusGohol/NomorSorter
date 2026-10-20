@@ -18,7 +18,8 @@ import java.util.regex.*;
 
 public class NomorSorter extends JFrame {
     // Naikkan bersama berkas VERSION setiap rilis; tag GitHub memakai format v<versi>.
-    static final String APP_VERSION = "2.8.0";
+    static final String APP_VERSION = "2.9.0";
+    private static java.nio.channels.FileLock appLock;
     private static final String UPDATE_REPO = "AgusGohol/NomorSorter";
     // Palet: satu warna aksen (hijau) di atas permukaan biru gelap netral.
     private static final Color BACKGROUND = new Color(11, 18, 32);
@@ -87,6 +88,7 @@ public class NomorSorter extends JFrame {
         migrateDeviceDates();
         migrateNumbersToEightFormat();
         loadDeviceCount();
+        dailyBackup();
         Files.writeString(directory.resolve("shared-format.marker"), "NomorSorter shared daily database v1\n", StandardCharsets.UTF_8);
         openDate(activeDate);
         // Basis data dari paket versi sebelumnya tetap dapat dipakai.
@@ -945,17 +947,18 @@ public class NomorSorter extends JFrame {
                 lines.add(number + "\t" + allComs.getOrDefault(group.getKey(), Collections.emptyMap()).getOrDefault(number, "") + "\t" + group.getKey());
         Path temp = Files.createTempFile(file.getParent(), "nomor-gabungan-", ".tmp");
         try {
-            Files.write(temp, lines, StandardCharsets.UTF_8);
+            // SYNC: isi berkas benar-benar ditulis ke disk sebelum menggantikan berkas lama.
+            Files.write(temp, lines, StandardCharsets.UTF_8, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.SYNC);
             try { Files.move(temp, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING); }
             catch (AtomicMoveNotSupportedException ex) { Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING); }
         } finally { Files.deleteIfExists(temp); }
     }
 
-    private static int deleteShared(Path file, Map<Integer, Set<String>> selected, boolean entireDate) throws IOException {
+    private int deleteShared(Path file, Map<Integer, Set<String>> selected, boolean entireDate, String date, boolean sudah) throws IOException {
         Map<Integer, LinkedHashSet<String>> all = new TreeMap<>();
         Map<Integer, Map<String, String>> coms = new TreeMap<>();
         readShared(file, all, coms);
-        int removed = 0;
+        List<String> journal = new ArrayList<>();
         for (Map.Entry<Integer, LinkedHashSet<String>> group : all.entrySet()) {
             Set<String> targets = selected.getOrDefault(group.getKey(), Collections.emptySet());
             Iterator<String> items = group.getValue().iterator();
@@ -964,13 +967,15 @@ public class NomorSorter extends JFrame {
                 if (entireDate || targets.contains(number)) {
                     items.remove();
                     Map<String, String> deviceComs = coms.get(group.getKey());
-                    if (deviceComs != null) deviceComs.remove(number);
-                    removed++;
+                    String com = deviceComs == null ? null : deviceComs.remove(number);
+                    journal.add(journalLine("HAPUS", date, group.getKey(), sudah, number, com));
                 }
             }
         }
-        if (removed > 0) writeShared(file, all, coms);
-        return removed;
+        if (journal.isEmpty()) return 0;
+        appendJournal(journal);
+        writeShared(file, all, coms);
+        return journal.size();
     }
 
     private void openDate(String date) throws IOException {
@@ -1271,7 +1276,7 @@ public class NomorSorter extends JFrame {
         if (!Files.exists(backup)) Files.copy(file, backup);
         Path temporary = Files.createTempFile(parent, "format-8-", ".tmp");
         try {
-            Files.write(temporary, converted, StandardCharsets.UTF_8);
+            Files.write(temporary, converted, StandardCharsets.UTF_8, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.SYNC);
             try { Files.move(temporary, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING); }
             catch (AtomicMoveNotSupportedException ex) { Files.move(temporary, file, StandardCopyOption.REPLACE_EXISTING); }
         } finally { Files.deleteIfExists(temporary); }
@@ -1292,7 +1297,7 @@ public class NomorSorter extends JFrame {
         try {
             List<String> lines = new ArrayList<>();
             for (String number : items) lines.add(number + (coms.containsKey(number) ? "\t" + coms.get(number) : ""));
-            Files.write(temp, lines, StandardCharsets.UTF_8);
+            Files.write(temp, lines, StandardCharsets.UTF_8, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.SYNC);
             try { Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE); }
             catch (AtomicMoveNotSupportedException e) { Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING); }
         } finally { Files.deleteIfExists(temp); }
@@ -1302,66 +1307,223 @@ public class NomorSorter extends JFrame {
         mergeStatus(yesFile, activeDevice, yes, yesCom, true);
         mergeStatus(noFile, activeDevice, no, noCom, true);
     }
-    private void persist() {
-        try { save(); saveHidden(); refresh(); }
-        catch (IOException ex) { error("Gagal menyimpan data: " + ex.getMessage()); }
+
+    // ===== Penyimpanan aman =====
+    // 1) Setiap perubahan membaca ulang berkas dari disk lalu hanya menambahkan perubahan baru,
+    //    sehingga data yang ditulis jendela lain tidak tertimpa salinan lama di memori.
+    // 2) Perubahan dicatat lebih dulu ke jurnal (data/jurnal/), yang hanya pernah ditambah, tidak pernah ditimpa.
+    // 3) Berkas ditulis dengan SYNC agar benar-benar sampai ke disk walau PC mati mendadak.
+
+    /** changes: nomor -> true (Sudah WA) / false (Belum WA), untuk device dan tanggal yang aktif. */
+    private void applyChanges(LinkedHashMap<String, Boolean> changes, Map<String, String> coms, String action) throws IOException {
+        Path folder = directory.resolve(activeDate);
+        Files.createDirectories(folder);
+        List<String> journal = new ArrayList<>();
+        for (Map.Entry<String, Boolean> change : changes.entrySet())
+            journal.add(journalLine(action, activeDate, activeDevice, change.getValue(), change.getKey(), coms.getOrDefault(change.getKey(), "")));
+        appendJournal(journal);
+        Map<Integer, LinkedHashSet<String>> allYes = new TreeMap<>(), allNo = new TreeMap<>();
+        Map<Integer, Map<String, String>> allYesCom = new TreeMap<>(), allNoCom = new TreeMap<>();
+        readShared(folder.resolve("sudah-wa.db"), allYes, allYesCom);
+        readShared(folder.resolve("belum-wa.db"), allNo, allNoCom);
+        LinkedHashSet<String> deviceYes = allYes.computeIfAbsent(activeDevice, ignored -> new LinkedHashSet<>());
+        LinkedHashSet<String> deviceNo = allNo.computeIfAbsent(activeDevice, ignored -> new LinkedHashSet<>());
+        Map<String, String> deviceYesCom = allYesCom.computeIfAbsent(activeDevice, ignored -> new LinkedHashMap<>());
+        Map<String, String> deviceNoCom = allNoCom.computeIfAbsent(activeDevice, ignored -> new LinkedHashMap<>());
+        for (Map.Entry<String, Boolean> change : changes.entrySet()) {
+            String number = change.getKey();
+            boolean sudah = change.getValue();
+            (sudah ? deviceNo : deviceYes).remove(number);
+            String prior = (sudah ? deviceNoCom : deviceYesCom).remove(number);
+            (sudah ? deviceYes : deviceNo).add(number);
+            Map<String, String> targetCom = sudah ? deviceYesCom : deviceNoCom;
+            if (coms.get(number) != null && !coms.get(number).isEmpty()) targetCom.put(number, coms.get(number));
+            else if (prior != null) targetCom.putIfAbsent(number, prior);
+            hiddenYes.remove(number);
+            hiddenNo.remove(number);
+        }
+        writeShared(folder.resolve("sudah-wa.db"), allYes, allYesCom);
+        writeShared(folder.resolve("belum-wa.db"), allNo, allNoCom);
+        saveHidden();
+        openDate(activeDate);
+        refresh();
+    }
+
+    private static String journalLine(String action, String date, int device, boolean sudah, String number, String com) {
+        return java.time.LocalDateTime.now().withNano(0) + "\t" + action + "\t" + date + "\t" + device + "\t"
+            + (sudah ? "sudah" : "belum") + "\t" + number + "\t" + (com == null ? "" : com);
+    }
+
+    private void appendJournal(List<String> lines) throws IOException {
+        if (lines.isEmpty()) return;
+        Path folder = directory.resolve("jurnal");
+        Files.createDirectories(folder);
+        Files.write(folder.resolve(YearMonth.now() + ".txt"), lines, StandardCharsets.UTF_8,
+            StandardOpenOption.CREATE, StandardOpenOption.APPEND, StandardOpenOption.SYNC);
+    }
+
+    /** Device memakai tanggal manual? Tanyakan dulu agar nomor tidak "hilang" karena tersimpan di tanggal lain. */
+    private boolean confirmTargetDate() {
+        if (activeDate.equals(today())) return true;
+        Object[] options = {"Simpan ke " + activeDate, "Pakai hari ini", "Batal"};
+        int choice = JOptionPane.showOptionDialog(this, "Device " + activeDevice + " sedang memakai tanggal " + longDate(activeDate)
+                + ", bukan hari ini.\nNomor akan disimpan ke tanggal tersebut.", "Tanggal penyimpanan",
+            JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE, null, options, options[0]);
+        if (choice == 0) return true;
+        if (choice != 1) return false;
+        try { switchInputDate(today()); return true; }
+        catch (IOException ex) { error("Gagal membuka tanggal hari ini: " + ex.getMessage()); return false; }
     }
 
     private void add(String text, boolean toYes) {
         LinkedHashSet<String> numbers = extract(text);
         if (numbers.isEmpty()) { error("Tidak ditemukan nomor Indonesia yang valid (contoh: 081234567890)."); return; }
-        if (!updateDateAtMidnight()) return;
-        Set<String> target = toYes ? yes : no;
-        Set<String> other = toYes ? no : yes;
-        Map<String, String> targetCom = toYes ? yesCom : noCom, otherCom = toYes ? noCom : yesCom;
+        if (!updateDateAtMidnight() || !confirmTargetDate()) return;
+        LinkedHashMap<String, Boolean> changes = new LinkedHashMap<>();
+        Map<String, String> coms = new HashMap<>();
         for (String line : text.split("\\R")) {
             String com = comIn(line);
             for (String number : extract(line)) {
-                other.remove(number);
-                String prior = otherCom.remove(number);
-                target.add(number);
-                hiddenYes.remove(number);
-                hiddenNo.remove(number);
-                if (com != null) targetCom.put(number, com);
-                else if (prior != null) targetCom.putIfAbsent(number, prior);
+                changes.put(number, toYes);
+                if (com != null) coms.put(number, com);
             }
         }
-        persist(); input.setText("");
+        try { applyChanges(changes, coms, "SIMPAN"); }
+        catch (IOException ex) { error("Gagal menyimpan data: " + ex.getMessage() + "\nTeks input tidak dihapus, coba simpan lagi."); return; }
+        input.setText("");
         tabs.setSelectedIndex(toYes ? 0 : 1);
-        JOptionPane.showMessageDialog(this, numbers.size() + " nomor diproses.");
+        JOptionPane.showMessageDialog(this, numbers.size() + " nomor disimpan ke Device " + activeDevice + ", tanggal " + activeDate + ".");
     }
 
     private void sortAutomatically() {
         if (extract(input.getText()).isEmpty()) { error("Tidak ditemukan nomor. Format yang diterima: 831234567890, 0831234567890, atau 62831234567890."); return; }
-        if (!updateDateAtMidnight()) return;
+        if (!updateDateAtMidnight() || !confirmTargetDate()) return;
         int found = 0, marked = 0, unmarked = 0;
+        LinkedHashMap<String, Boolean> changes = new LinkedHashMap<>();
+        Map<String, String> coms = new HashMap<>();
         for (String line : input.getText().split("\\R")) {
             LinkedHashSet<String> numbers = extract(line);
             String com = comIn(line);
             boolean hasWa = WA_TAG.matcher(line).find() && !NO_WA_TAG.matcher(line).find();
             for (String number : numbers) {
                 found++;
-                hiddenYes.remove(number);
-                hiddenNo.remove(number);
-                if (hasWa) {
-                    no.remove(number);
-                    String prior = noCom.remove(number);
-                    yes.add(number);
-                    if (com != null) yesCom.put(number, com);
-                    else if (prior != null) yesCom.putIfAbsent(number, prior);
-                    marked++;
-                } else {
-                    yes.remove(number);
-                    String prior = yesCom.remove(number);
-                    no.add(number);
-                    if (com != null) noCom.put(number, com);
-                    else if (prior != null) noCom.putIfAbsent(number, prior);
-                    unmarked++;
-                }
+                changes.put(number, hasWa);
+                if (com != null) coms.put(number, com);
+                if (hasWa) marked++; else unmarked++;
             }
         }
-        persist(); input.setText("");
-        JOptionPane.showMessageDialog(this, "Diproses " + found + " baris nomor: " + marked + " bertanda WA, " + unmarked + " tanpa WA.\nNomor tanpa tulisan WA dimasukkan ke Belum WA.");
+        try { applyChanges(changes, coms, "SIMPAN"); }
+        catch (IOException ex) { error("Gagal menyimpan data: " + ex.getMessage() + "\nTeks input tidak dihapus, coba simpan lagi."); return; }
+        input.setText("");
+        JOptionPane.showMessageDialog(this, "Diproses " + found + " baris nomor: " + marked + " bertanda WA, " + unmarked + " tanpa WA.\n"
+            + "Disimpan ke Device " + activeDevice + ", tanggal " + activeDate + ".");
+    }
+
+    /** Cadangan otomatis sekali sehari saat aplikasi dibuka: data/cadangan/YYYY-MM-DD.zip, disimpan 30 hari terakhir. */
+    private void dailyBackup() {
+        try {
+            Path folder = directory.resolve("cadangan");
+            Files.createDirectories(folder);
+            Path target = folder.resolve(today() + ".zip");
+            if (Files.exists(target)) return;
+            Path temp = Files.createTempFile(folder, "cadangan-", ".tmp");
+            try {
+                try (java.util.zip.ZipOutputStream zip = new java.util.zip.ZipOutputStream(Files.newOutputStream(temp));
+                     DirectoryStream<Path> days = Files.newDirectoryStream(directory)) {
+                    for (Path day : days) {
+                        if (!Files.isDirectory(day)) continue;
+                        try { LocalDate.parse(day.getFileName().toString()); }
+                        catch (java.time.format.DateTimeParseException ignored) { continue; }
+                        for (String status : new String[]{"sudah-wa.db", "belum-wa.db"}) {
+                            Path file = day.resolve(status);
+                            if (!Files.isRegularFile(file)) continue;
+                            zip.putNextEntry(new java.util.zip.ZipEntry(day.getFileName() + "/" + status));
+                            Files.copy(file, zip);
+                            zip.closeEntry();
+                        }
+                    }
+                }
+                Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING);
+            } finally { Files.deleteIfExists(temp); }
+            List<Path> backups = new ArrayList<>();
+            try (DirectoryStream<Path> files = Files.newDirectoryStream(folder, "????-??-??.zip")) { for (Path file : files) backups.add(file); }
+            backups.sort(Comparator.comparing(Path::toString));
+            for (int i = 0; i < backups.size() - 30; i++) Files.deleteIfExists(backups.get(i));
+        } catch (IOException ex) { System.err.println("Cadangan harian gagal: " + ex.getMessage()); }
+    }
+
+    /** Bandingkan jurnal dengan database tanggal ini; nomor yang tercatat disimpan tetapi tidak ada lagi ditawarkan untuk dipulihkan. */
+    private void restoreFromJournal(int index) {
+        String date = (String) databaseDates[index].getSelectedItem();
+        if (date == null) return;
+        // Putar ulang jurnal: kunci "device\tnomor" -> status terakhir; HAPUS menghapus kunci.
+        Map<String, String[]> expected = new LinkedHashMap<>();
+        Path folder = directory.resolve("jurnal");
+        try {
+            if (Files.isDirectory(folder)) {
+                List<Path> files = new ArrayList<>();
+                try (DirectoryStream<Path> stream = Files.newDirectoryStream(folder, "*.txt")) { for (Path file : stream) files.add(file); }
+                files.sort(Comparator.comparing(Path::toString));
+                for (Path file : files)
+                    for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
+                        String[] c = line.split("\t", -1);
+                        if (c.length < 7 || !c[2].equals(date)) continue;
+                        String key = c[3] + "\t" + c[5];
+                        if (c[1].equals("HAPUS")) { String[] prior = expected.get(key); if (prior != null && prior[0].equals(c[4])) expected.remove(key); }
+                        else expected.put(key, new String[]{c[4], c[6]});
+                    }
+            }
+            Map<Integer, LinkedHashSet<String>> allYes = new TreeMap<>(), allNo = new TreeMap<>();
+            readShared(directory.resolve(date).resolve("sudah-wa.db"), allYes, new TreeMap<>());
+            readShared(directory.resolve(date).resolve("belum-wa.db"), allNo, new TreeMap<>());
+            Map<Integer, LinkedHashMap<String, Boolean>> missing = new TreeMap<>();
+            Map<String, String> coms = new HashMap<>();
+            int total = 0;
+            for (Map.Entry<String, String[]> entry : expected.entrySet()) {
+                String[] key = entry.getKey().split("\t");
+                int device = Integer.parseInt(key[0]);
+                String number = key[1];
+                boolean present = allYes.getOrDefault(device, new LinkedHashSet<>()).contains(number)
+                    || allNo.getOrDefault(device, new LinkedHashSet<>()).contains(number);
+                if (present) continue;
+                missing.computeIfAbsent(device, ignored -> new LinkedHashMap<>()).put(number, entry.getValue()[0].equals("sudah"));
+                if (!entry.getValue()[1].isEmpty()) coms.put(number, entry.getValue()[1]);
+                total++;
+            }
+            if (total == 0) {
+                JOptionPane.showMessageDialog(this, expected.isEmpty()
+                    ? "Jurnal belum mencatat input untuk tanggal " + date + ".\n(Jurnal mulai dicatat sejak versi 2.9.0.)"
+                    : "Tidak ada nomor yang hilang pada tanggal " + date + ". Semua nomor di jurnal masih ada di database.");
+                return;
+            }
+            if (JOptionPane.showConfirmDialog(this, total + " nomor tercatat pernah disimpan pada " + longDate(date)
+                    + " tetapi tidak ada di database.\nNomor yang Anda hapus sendiri lewat menu hapus tidak ikut dipulihkan.\n\nPulihkan sekarang?",
+                    "Pulihkan dari jurnal", JOptionPane.YES_NO_OPTION) != JOptionPane.YES_OPTION) return;
+            int previousDevice = activeDevice;
+            String previousDate = activeDate;
+            try {
+                for (Map.Entry<Integer, LinkedHashMap<String, Boolean>> group : missing.entrySet()) {
+                    activeDevice = group.getKey();
+                    activeDate = date;
+                    hiddenFolderLoad();
+                    applyChanges(group.getValue(), coms, "PULIH");
+                }
+            } finally {
+                activeDevice = previousDevice;
+                openDate(previousDate);
+                refresh();
+            }
+            refreshDatabasePage(index);
+            databaseInfo[index].setText(total + " nomor dipulihkan dari jurnal.");
+        } catch (IOException | RuntimeException ex) { error("Gagal memulihkan dari jurnal: " + ex.getMessage()); }
+    }
+
+    private void hiddenFolderLoad() throws IOException {
+        Set<String> newHiddenYes = new LinkedHashSet<>(), newHiddenNo = new LinkedHashSet<>();
+        read(hiddenFolder(activeDate).resolve("sudah-wa.db"), newHiddenYes, new LinkedHashMap<>());
+        read(hiddenFolder(activeDate).resolve("belum-wa.db"), newHiddenNo, new LinkedHashMap<>());
+        hiddenYes.clear(); hiddenYes.addAll(newHiddenYes);
+        hiddenNo.clear(); hiddenNo.addAll(newHiddenNo);
     }
 
     private void importText() {
@@ -1832,6 +1994,8 @@ public class NomorSorter extends JFrame {
             showExportDialog(Set.of(selected == null ? activeDate : selected), null, Set.of(isYes));
         });
         JPopupMenu deleteMenu = popupMenu(
+            menuItem("Pulihkan nomor yang hilang (dari jurnal)", IC_RESTORE, false, () -> restoreFromJournal(index)),
+            null,
             menuItem("Hapus terpilih dari database", IC_DELETE, true, () -> deleteDatabaseRecords(index, false)),
             menuItem("Hapus semua pada tanggal ini", IC_CLEAR, true, () -> deleteDatabaseRecords(index, true)));
         JPanel footer = new JPanel(new BorderLayout());
@@ -1949,7 +2113,7 @@ public class NomorSorter extends JFrame {
                                           JOptionPane.WARNING_MESSAGE) != JOptionPane.YES_OPTION) return;
         Path file = directory.resolve(date).resolve(index == 1 ? "sudah-wa.db" : "belum-wa.db");
         try {
-            int deleted = deleteShared(file, selected, entireDate);
+            int deleted = deleteShared(file, selected, entireDate, date, index == 1);
             refreshDatabasePage(index);
             if (date.equals(activeDate)) { openDate(activeDate); refresh(); }
             databaseInfo[index].setText(deleted + " catatan " + status + " tanggal " + date + " dihapus dari database utama.");
@@ -2236,6 +2400,18 @@ public class NomorSorter extends JFrame {
         UIManager.put("ToolTip.border", BorderFactory.createCompoundBorder(BorderFactory.createLineBorder(BORDER_STRONG),
             BorderFactory.createEmptyBorder(4, 8, 4, 8)));
         UIManager.put("ToolTip.font", font(false, 12));
+        // Hanya satu jendela Nomor Sorter per folder data: dua jendela bisa saling menimpa nomor.
+        try {
+            Files.createDirectories(Paths.get("data"));
+            java.nio.channels.FileChannel channel = java.nio.channels.FileChannel.open(Paths.get("data", ".kunci-aplikasi"),
+                StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+            appLock = channel.tryLock();
+            if (appLock == null) {
+                JOptionPane.showMessageDialog(null, "Nomor Sorter sudah terbuka di jendela lain.\nPakai jendela yang sudah terbuka agar nomor tidak saling menimpa.",
+                    "Nomor Sorter", JOptionPane.INFORMATION_MESSAGE);
+                System.exit(0);
+            }
+        } catch (IOException ex) { System.err.println("Kunci aplikasi tidak dapat dibuat: " + ex.getMessage()); }
         SwingUtilities.invokeLater(() -> {
             try { new NomorSorter().setVisible(true); }
             catch (IOException ex) { JOptionPane.showMessageDialog(null, "Gagal membuka basis data: " + ex.getMessage()); }
