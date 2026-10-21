@@ -1,5 +1,13 @@
 # Nomor Sorter — Java siap dijalankan dengan JRE
 
+## Baru di versi 2.11.0
+
+- Aplikasi membuat salinan Notepad otomatis di folder aplikasi:
+  `Sudah WA\sudah wa 2026-10-21.txt` dan `Belum WA\belum wa 2026-10-21.txt` (satu berkas per tanggal).
+- Isinya hanya nomor (format `8...`), satu per baris, urut per device, termasuk nomor yang disembunyikan dari riwayat device. Nomor yang sama di beberapa device ditulis per device.
+- Berkas diperbarui setiap kali nomor disimpan, dipindah status, dihapus, atau dipulihkan, dan disamakan lagi dengan database setiap aplikasi dibuka (tanggal lama ikut dibuatkan). Tanggal tanpa nomor tidak dibuatkan berkas.
+- Berkas ini hanya salinan untuk dibaca. Mengubah atau menghapusnya tidak mengubah data di aplikasi; database asli tetap di folder `data`.
+
 ## Baru di versi 2.10.0
 
 - Tombol **Salin semua device** di samping menu **⋯** pada halaman Input device. Pilih **Sudah WA** atau **Belum WA**; aplikasi menyalin nomor dari semua device pada tanggal yang sedang aktif, urut per device (Device 1, Device 2, …). Nomor yang sama di beberapa device ikut tersalin sesuai jumlah device-nya, dan nomor yang disembunyikan dari riwayat device ikut tersalin. Fitur ini bersifat sementara.

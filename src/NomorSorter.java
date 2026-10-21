@@ -18,7 +18,7 @@ import java.util.regex.*;
 
 public class NomorSorter extends JFrame {
     // Naikkan bersama berkas VERSION setiap rilis; tag GitHub memakai format v<versi>.
-    static final String APP_VERSION = "2.10.0";
+    static final String APP_VERSION = "2.11.0";
     private static java.nio.channels.FileLock appLock;
     private static final String UPDATE_REPO = "AgusGohol/NomorSorter";
     // Palet: satu warna aksen (hijau) di atas permukaan biru gelap netral.
@@ -102,6 +102,7 @@ public class NomorSorter extends JFrame {
             if (Files.exists(legacyYes)) Files.move(legacyYes, directory.resolve("sudah-wa.db.migrated"), StandardCopyOption.REPLACE_EXISTING);
             if (Files.exists(legacyNo)) Files.move(legacyNo, directory.resolve("belum-wa.db.migrated"), StandardCopyOption.REPLACE_EXISTING);
         }
+        writeAllTextFiles();
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setMinimumSize(new Dimension(1000, 680));
         setSize(1240, 800);
@@ -975,6 +976,7 @@ public class NomorSorter extends JFrame {
         if (journal.isEmpty()) return 0;
         appendJournal(journal);
         writeShared(file, all, coms);
+        writeTextFiles(date);
         return journal.size();
     }
 
@@ -1344,9 +1346,43 @@ public class NomorSorter extends JFrame {
         }
         writeShared(folder.resolve("sudah-wa.db"), allYes, allYesCom);
         writeShared(folder.resolve("belum-wa.db"), allNo, allNoCom);
+        writeTextFiles(activeDate);
         saveHidden();
         openDate(activeDate);
         refresh();
+    }
+
+    // ===== Salinan teks per tanggal: <folder aplikasi>\Sudah WA\sudah wa YYYY-MM-DD.txt dan Belum WA\… =====
+    // Hanya salinan untuk dibaca; database asli tetap di folder data. Isi: nomor 8…, urut per device, termasuk yang disembunyikan.
+
+    private Path textFolder(boolean sudah) { return directory.toAbsolutePath().getParent().resolve(sudah ? "Sudah WA" : "Belum WA"); }
+
+    private void writeTextFiles(String date) {
+        for (boolean sudah : new boolean[]{true, false}) {
+            Path file = textFolder(sudah).resolve((sudah ? "sudah wa " : "belum wa ") + date + ".txt");
+            try {
+                Map<Integer, LinkedHashSet<String>> all = new TreeMap<>();
+                readShared(directory.resolve(date).resolve(sudah ? "sudah-wa.db" : "belum-wa.db"), all, new TreeMap<>());
+                StringBuilder content = new StringBuilder();
+                for (LinkedHashSet<String> group : all.values()) for (String number : group) content.append(display(number)).append("\r\n");
+                if (content.length() == 0) { Files.deleteIfExists(file); continue; }
+                if (Files.exists(file) && Files.readString(file, StandardCharsets.UTF_8).contentEquals(content)) continue;
+                Files.createDirectories(file.getParent());
+                Files.writeString(file, content, StandardCharsets.UTF_8);
+            } catch (IOException ex) { System.err.println("Gagal menulis " + file + ": " + ex.getMessage()); }
+        }
+    }
+
+    /** Saat aplikasi dibuka: samakan salinan teks semua tanggal dengan database. */
+    private void writeAllTextFiles() {
+        try (DirectoryStream<Path> days = Files.newDirectoryStream(directory)) {
+            for (Path day : days) {
+                if (!Files.isDirectory(day)) continue;
+                try { LocalDate.parse(day.getFileName().toString()); }
+                catch (java.time.format.DateTimeParseException ignored) { continue; }
+                writeTextFiles(day.getFileName().toString());
+            }
+        } catch (IOException ex) { System.err.println("Gagal membuat salinan teks: " + ex.getMessage()); }
     }
 
     private static String journalLine(String action, String date, int device, boolean sudah, String number, String com) {
