@@ -1,5 +1,10 @@
 # Nomor Sorter — Java siap dijalankan dengan JRE
 
+## Baru di versi 2.12.0
+
+- Tulisan **COM** di tabel halaman Input device dan halaman Belum WA / Sudah WA kini berwarna terang dan berspasi (`COM 7`), sehingga tidak menyatu dengan latar. Database tetap menyimpan `COM7`.
+- Latar scrollbar tidak lagi berwarna putih saat tabel panjang.
+
 ## Baru di versi 2.11.0
 
 - Aplikasi membuat salinan Notepad otomatis di folder aplikasi:

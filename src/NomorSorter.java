@@ -18,25 +18,25 @@ import java.util.regex.*;
 
 public class NomorSorter extends JFrame {
     // Naikkan bersama berkas VERSION setiap rilis; tag GitHub memakai format v<versi>.
-    static final String APP_VERSION = "2.11.0";
+    static final String APP_VERSION = "2.12.0";
     private static java.nio.channels.FileLock appLock;
     private static final String UPDATE_REPO = "AgusGohol/NomorSorter";
     // Palet: satu warna aksen (hijau) di atas permukaan biru gelap netral.
-    private static final Color BACKGROUND = new Color(11, 18, 32);
-    private static final Color SIDEBAR = new Color(14, 22, 38);
-    private static final Color PANEL = new Color(16, 25, 42);
-    private static final Color INPUT = new Color(11, 18, 32);
-    private static final Color HOVER = new Color(26, 39, 61);
-    private static final Color ROW_LINE = new Color(24, 35, 54);
-    private static final Color ROW_SELECTED = new Color(22, 52, 76);
-    private static final Color TEXT = new Color(230, 237, 246);
-    private static final Color MUTED = new Color(150, 164, 186);
-    private static final Color SUBTLE = new Color(100, 117, 142);
-    private static final Color ACCENT = new Color(47, 191, 143);
-    private static final Color ON_ACCENT = new Color(6, 38, 27);
-    private static final Color BORDER = new Color(31, 44, 65);
-    private static final Color BORDER_STRONG = new Color(42, 58, 84);
-    private static final Color DANGER = new Color(240, 104, 110);
+    static final Color BACKGROUND = new Color(11, 18, 32);
+    static final Color SIDEBAR = new Color(14, 22, 38);
+    static final Color PANEL = new Color(16, 25, 42);
+    static final Color INPUT = new Color(11, 18, 32);
+    static final Color HOVER = new Color(26, 39, 61);
+    static final Color ROW_LINE = new Color(24, 35, 54);
+    static final Color ROW_SELECTED = new Color(22, 52, 76);
+    static final Color TEXT = new Color(230, 237, 246);
+    static final Color MUTED = new Color(150, 164, 186);
+    static final Color SUBTLE = new Color(100, 117, 142);
+    static final Color ACCENT = new Color(47, 191, 143);
+    static final Color ON_ACCENT = new Color(6, 38, 27);
+    static final Color BORDER = new Color(31, 44, 65);
+    static final Color BORDER_STRONG = new Color(42, 58, 84);
+    static final Color DANGER = new Color(240, 104, 110);
     private static final String FONT_NAME = availableFont("Segoe UI", "SansSerif");
     private static final String FONT_STRONG = availableFont("Segoe UI Semibold", FONT_NAME);
     private static final String FONT_MONO = availableFont("Consolas", "Monospaced");
@@ -140,20 +140,34 @@ public class NomorSorter extends JFrame {
         addToSidebar(sidebar, showYes);
         sidebar.add(Box.createVerticalStrut(2));
         addToSidebar(sidebar, exportNumbers);
+        // Kait fitur tambahan: hanya aktif bila kelas FiturPribadi ikut dikompilasi (tidak ada di rilis umum).
+        JPanel extraPage = loadExtraPage();
+        JToggleButton showExtra = null;
+        if (extraPage != null) {
+            sidebar.add(Box.createVerticalStrut(16));
+            addToSidebar(sidebar, sidebarSection("Pribadi"));
+            showExtra = styled(new JToggleButton(String.valueOf(extraPage.getClientProperty("judulMenu"))), Kind.NAV, IC_SEARCH);
+            addToSidebar(sidebar, showExtra);
+        }
         ButtonGroup menu = new ButtonGroup();
-        for (JToggleButton nav : new JToggleButton[]{showDevices, showNo, showYes}) {
+        for (JToggleButton nav : new JToggleButton[]{showDevices, showNo, showYes, showExtra}) {
+            if (nav == null) continue;
             menu.add(nav);
             nav.putClientProperty("accentIcon", Boolean.TRUE);
         }
+        if (showExtra != null) showExtra.addActionListener(e -> pageLayout.show(pages, "tambahan"));
         showDevices.setSelected(true);
         showNo.addActionListener(e -> showDatabase(false));
         showYes.addActionListener(e -> showDatabase(true));
         showDevices.addActionListener(e -> pageLayout.show(pages, "devices"));
         sidebar.add(Box.createVerticalGlue());
-        JButton checkUpdate = styled(new JButton("Periksa pembaruan"), Kind.NAV, IC_SYNC);
-        checkUpdate.addActionListener(e -> checkForUpdates(true));
-        addToSidebar(sidebar, checkUpdate);
-        JLabel versionLabel = label("Versi " + APP_VERSION, false, 11, SUBTLE);
+        // Versi pribadi (dengan FiturPribadi) tidak memakai pembaruan otomatis sama sekali.
+        if (extraPage == null) {
+            JButton checkUpdate = styled(new JButton("Periksa pembaruan"), Kind.NAV, IC_SYNC);
+            checkUpdate.addActionListener(e -> checkForUpdates(true));
+            addToSidebar(sidebar, checkUpdate);
+        }
+        JLabel versionLabel = label("Versi " + APP_VERSION + (extraPage != null ? " · pribadi" : ""), false, 11, SUBTLE);
         versionLabel.setBorder(BorderFactory.createEmptyBorder(6, 12, 0, 0));
         addToSidebar(sidebar, versionLabel);
         root.add(sidebar, BorderLayout.WEST);
@@ -301,6 +315,7 @@ public class NomorSorter extends JFrame {
         pages.add(devicePage, "devices");
         pages.add(createDatabasePage(false), "belum");
         pages.add(createDatabasePage(true), "sudah");
+        if (extraPage != null) pages.add(extraPage, "tambahan");
         root.add(pages, BorderLayout.CENTER);
         pageLayout.show(pages, "devices");
         styleTree(root);
@@ -309,7 +324,7 @@ public class NomorSorter extends JFrame {
         dayChangeTimer.start();
         javax.swing.Timer updateTimer = new javax.swing.Timer(2_500, e -> { reportFailedUpdate(); checkForUpdates(false); });
         updateTimer.setRepeats(false);
-        updateTimer.start();
+        if (extraPage == null) updateTimer.start();
     }
 
     private static void addToSidebar(JPanel sidebar, JComponent item) {
@@ -383,7 +398,7 @@ public class NomorSorter extends JFrame {
         return fallback;
     }
 
-    private static Font font(boolean strong, int size) { return new Font(strong ? FONT_STRONG : FONT_NAME, Font.PLAIN, size); }
+    static Font font(boolean strong, int size) { return new Font(strong ? FONT_STRONG : FONT_NAME, Font.PLAIN, size); }
 
     private static Graphics2D smooth(Graphics g) {
         Graphics2D graphics = (Graphics2D) g.create();
@@ -393,7 +408,7 @@ public class NomorSorter extends JFrame {
     }
 
     // Kode ikon Segoe MDL2 Assets / Segoe Fluent Icons (bawaan Windows 10/11).
-    private static final char IC_DEVICE = '', IC_PENDING = '', IC_DONE = '', IC_EXPORT = '',
+    static final char IC_DEVICE = '', IC_PENDING = '', IC_DONE = '', IC_EXPORT = '',
         IC_SYNC = '', IC_CALENDAR = '', IC_SEARCH = '', IC_COPY = '', IC_MORE = '',
         IC_ADD = '', IC_IMPORT = '', IC_CHEVRON_DOWN = '', IC_PREV = '', IC_NEXT = '',
         IC_HIDE = '', IC_CLEAR = '', IC_RESTORE = '', IC_DELETE = '', IC_INPUT = '';
@@ -476,9 +491,9 @@ public class NomorSorter extends JFrame {
         return b;
     }
 
-    private static JButton primary(String label) { return styled(new JButton(label), Kind.PRIMARY, (char) 0); }
-    private static JButton secondary(String label, char glyph) { return styled(new JButton(label), Kind.SECONDARY, glyph); }
-    private static JButton ghost(String label, char glyph) { return styled(new JButton(label), Kind.GHOST, glyph); }
+    static JButton primary(String label) { return styled(new JButton(label), Kind.PRIMARY, (char) 0); }
+    static JButton secondary(String label, char glyph) { return styled(new JButton(label), Kind.SECONDARY, glyph); }
+    static JButton ghost(String label, char glyph) { return styled(new JButton(label), Kind.GHOST, glyph); }
     private static JButton iconButton(char glyph, String tooltip) {
         JButton b = styled(new JButton(""), Kind.GHOST, glyph);
         b.setToolTipText(tooltip);
@@ -531,7 +546,7 @@ public class NomorSorter extends JFrame {
         }
     }
 
-    private static class HintTextArea extends JTextArea {
+    static class HintTextArea extends JTextArea {
         private final String hint;
         HintTextArea(String hint, int rows, int columns) { super(rows, columns); this.hint = hint; }
         @Override protected void paintComponent(Graphics g) {
@@ -581,7 +596,8 @@ public class NomorSorter extends JFrame {
         @Override protected JButton createIncreaseButton(int orientation) { return zeroButton(); }
         private static JButton zeroButton() { JButton b = new JButton(); b.setPreferredSize(new Dimension(0, 0)); return b; }
         @Override protected void paintTrack(Graphics g, JComponent c, Rectangle r) {
-            g.setColor(c.getParent() != null ? c.getParent().getBackground() : PANEL);
+            // Selalu warna kartu: latar JScrollPane bawaan Windows berwarna putih.
+            g.setColor(PANEL);
             g.fillRect(r.x, r.y, r.width, r.height);
         }
         @Override protected void paintThumb(Graphics g, JComponent c, Rectangle r) {
@@ -616,7 +632,7 @@ public class NomorSorter extends JFrame {
         }
     }
 
-    private static JLabel label(String text, boolean strong, int size, Color color) {
+    static JLabel label(String text, boolean strong, int size, Color color) {
         JLabel label = new JLabel(text);
         label.setFont(font(strong, size));
         label.setForeground(color);
@@ -671,7 +687,7 @@ public class NomorSorter extends JFrame {
     }
 
     /** Kartu: latar sedikit lebih terang dengan garis tepi tipis; isi dipotong mengikuti sudut membulat. */
-    private static JPanel card(LayoutManager layout) {
+    static JPanel card(LayoutManager layout) {
         JPanel panel = new JPanel(layout) {
             @Override protected void paintComponent(Graphics g) {
                 Graphics2D graphics = smooth(g);
@@ -698,7 +714,7 @@ public class NomorSorter extends JFrame {
         return panel;
     }
 
-    private static JPanel row(int gap, Component... components) {
+    static JPanel row(int gap, Component... components) {
         JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         panel.setOpaque(false);
         for (int i = 0; i < components.length; i++) {
@@ -708,7 +724,7 @@ public class NomorSorter extends JFrame {
         return panel;
     }
 
-    private static JPanel pageHeader(String title, JLabel subtitle, Component right) {
+    static JPanel pageHeader(String title, JLabel subtitle, Component right) {
         JPanel header = new JPanel(new BorderLayout(16, 0));
         header.setOpaque(false);
         JPanel titles = new JPanel(new GridLayout(2, 1, 0, 0));
@@ -730,7 +746,7 @@ public class NomorSorter extends JFrame {
         return LocalDate.parse(date).format(DateTimeFormatter.ofPattern("EEEE, d MMMM yyyy", Locale.forLanguageTag("id-ID")));
     }
 
-    private void styleTable(JTable table) {
+    void styleTable(JTable table) {
         table.setBackground(PANEL);
         table.setForeground(TEXT);
         table.setSelectionBackground(ROW_SELECTED);
@@ -759,7 +775,10 @@ public class NomorSorter extends JFrame {
                 super.getTableCellRendererComponent(t, value, selected, false, row, column);
                 setBackground(selected ? ROW_SELECTED : PANEL);
                 String name = t.getColumnName(column);
-                setForeground(name.startsWith("Nomor") ? TEXT : MUTED);
+                boolean comColumn = name.equals("COM");
+                // COM ditampilkan terang dan berspasi ("COM 7") agar tidak menyatu dengan latar; data tetap "COM7".
+                if (comColumn && value instanceof String com && com.matches("COM\\d+")) setText("COM " + com.substring(3));
+                setForeground(name.startsWith("Nomor") || (comColumn && !"—".equals(value)) ? TEXT : MUTED);
                 setFont(font(false, 13));
                 setBorder(BorderFactory.createEmptyBorder(0, 16, 0, 8));
                 return this;
@@ -767,7 +786,7 @@ public class NomorSorter extends JFrame {
         });
     }
 
-    private JScrollPane tableScroll(JTable table) {
+    JScrollPane tableScroll(JTable table) {
         JScrollPane scroll = new JScrollPane(table);
         scroll.setBorder(BorderFactory.createEmptyBorder());
         scroll.getViewport().setBackground(PANEL);
@@ -2309,7 +2328,32 @@ public class NomorSorter extends JFrame {
         }.execute();
     }
 
+    /** Halaman tambahan dari kelas FiturPribadi bila ada; null pada rilis umum. */
+    private JPanel loadExtraPage() {
+        try {
+            return (JPanel) Class.forName("FiturPribadi").getConstructor(NomorSorter.class).newInstance(this);
+        } catch (ClassNotFoundException ex) { return null; }
+        catch (Exception ex) { System.err.println("Fitur tambahan gagal dimuat: " + ex); return null; }
+    }
+
+    private static boolean hasExtraFeature() {
+        try { Class.forName("FiturPribadi", false, NomorSorter.class.getClassLoader()); return true; }
+        catch (ClassNotFoundException ex) { return false; }
+    }
+
     private void promptUpdate(Release release) {
+        if (hasExtraFeature()) {
+            // Versi pribadi tidak memasang rilis umum sendiri, karena fitur tambahannya akan hilang.
+            String[] options = {"Mengerti", "Lewati versi ini"};
+            int choice = JOptionPane.showOptionDialog(this, "Versi umum " + release.version() + " sudah tersedia (terpasang: " + APP_VERSION + " · pribadi).\n"
+                    + "Versi pribadi tidak diperbarui otomatis agar fitur tambahannya tidak hilang.\nMinta dibuatkan versi pribadi yang baru.",
+                "Pembaruan Nomor Sorter", JOptionPane.DEFAULT_OPTION, JOptionPane.INFORMATION_MESSAGE, null, options, options[0]);
+            if (choice == 1) {
+                try { Files.writeString(skippedVersionFile(), release.version() + "\n", StandardCharsets.UTF_8); }
+                catch (IOException ex) { error("Gagal menyimpan pilihan: " + ex.getMessage()); }
+            }
+            return;
+        }
         JPanel message = new JPanel(new BorderLayout(0, 10));
         message.add(new JLabel("<html><b>Versi " + release.version() + " tersedia.</b> Versi terpasang: " + APP_VERSION
             + "<br>Data nomor tetap aman. Aplikasi akan ditutup sebentar lalu dibuka kembali.</html>"), BorderLayout.NORTH);
